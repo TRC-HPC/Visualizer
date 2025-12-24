@@ -249,7 +249,8 @@ def main():
         print("--- Merge Tool ---")
         file_input_1 = input("Enter path for the first file: ").strip().strip('"').strip("'")
         file_input_2 = input("Enter path for the second file: ").strip().strip('"').strip("'")
-        output_name_input = input("Enter name for the output file (default: merged_output.json): ").strip()
+        output_name_input = input("Enter name for the output file (default: merged_output): ").strip()
+        output_name_input = output_name_input + ".json"
         output_file = output_name_input if output_name_input else 'merged_output.json'
         print(f"Output will be saved to: {output_file}")
 
