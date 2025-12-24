@@ -626,7 +626,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 TOPO_FILE = ""
-LOG_FILE = os.path.join(BASE_DIR, "visYarin.json")
+LOG_FILE = os.path.join(BASE_DIR, ".json")
 PRESET_FILE = os.path.join(BASE_DIR, "saved_layout.json")  # positions-only
 SESSION_FILE = os.path.join(BASE_DIR, "saved_session.json")  # full session
 DEFAULTS_FILE = os.path.join(BASE_DIR, "view_defaults.json") # named position presets
@@ -721,6 +721,19 @@ RIGHT_CARD = {**CARD, "padding": "16px", "overflow": "auto"}   # ← new
 CENTER_CARD = {**CARD, "display": "grid", "gridTemplateRows": "1fr auto"}  # graph + time segment controls
 
 LABEL_MUTED = {"color": "#5b6470", "fontSize": "12px"}
+
+
+def _ud_edge_key(a, b) -> str:
+    """Canonical undirected edge key as 'min-max' (string)."""
+    try:
+        ia = int(a)
+        ib = int(b)
+        lo, hi = (ia, ib) if ia <= ib else (ib, ia)
+        return f"{lo}-{hi}"
+    except Exception:
+        sa = str(a)
+        sb = str(b)
+        return f"{sa}-{sb}" if sa <= sb else f"{sb}-{sa}"
 
 
 def parse_topology(filename):
@@ -1772,7 +1785,7 @@ def _line_fig(x, y, title, yaxis_title):
         return fig
 
     # Add/update figure traces and styling.
-    fig.add_trace(go.Scatter(x=x[mask], y=y[mask], mode="lines", name=title, connectgaps=False))
+    fig.add_trace(go.Scatter(x=x[mask], y=y[mask], mode="lines", line_shape="hv", name=title, connectgaps=False))
     fig.update_layout(
         title=title,
         xaxis_title="time",
@@ -2159,7 +2172,7 @@ def _dv_chunk_counts_in_segment(dv, t0, t1):
             for (src, dst), intervals in lci.items():
                 if not intervals:
                     continue
-                key = f"{int(src)}-{int(dst)}"
+                key = _ud_edge_key(src, dst)
                 for rec in intervals:
                     try:
                         st, en, ch = rec
@@ -2299,15 +2312,22 @@ def _calculate_param_values(param_name, t0, t1, data_id=None, viz=None):
     # --- LINK LOGIC ---
     if var_type == "link":
         # Branch based on the current state / selection.
+        # IMPORTANT: link vars are directional in the logs ((a,b)!=(b,a)),
+        # but the topology displays a single physical link. For coloring/filtering
+        # we use the dominant direction (max average value over the segment).
         values = {}
-        vals_list = []
-        per_link = getattr(target_var, "per_link", {})
+        per_link = getattr(target_var, "per_link", {}) or {}
         for (src, dst), series in per_link.items():
-            # Iterate over the relevant items and accumulate results.
-            avg = _avg_series_on_segment(series, t0, t1)
-            key = f"{src}-{dst}"
-            values[key] = avg
-            vals_list.append(avg)
+            try:
+                avg = _avg_series_on_segment(series, t0, t1)
+            except Exception:
+                continue
+            k = _ud_edge_key(src, dst)
+            prev = values.get(k)
+            if prev is None or float(avg) > float(prev):
+                values[k] = float(avg)
+
+        vals_list = list(values.values())
         
         vmin, vmax = (min(vals_list), max(vals_list)) if vals_list else (0.0, 1.0)
         return {"type": "link", "data": values, "min": vmin, "max": vmax, "name": param_name}
@@ -2393,7 +2413,12 @@ def _get_active_viz_list(active_coll_map, active_topo_id, topo_collectives):
     collectives = (topo_collectives or {}).get(tid, [])
     # Robustly handle active IDs (force int)
     raw_actives = (active_coll_map or {}).get(tid, [])
-    active_cids = set(int(x) for x in raw_actives)
+    active_cids = set()
+    for x in (raw_actives or []):
+        try:
+            active_cids.add(int(x))
+        except Exception:
+            continue
     
     viz_list = []
     
@@ -2477,6 +2502,164 @@ def _get_active_log_bundles(active_coll_map, active_topo_id, topo_collectives):
             out.append(cp)
 
     return out
+
+def _collect_chunk_ids_from_dv(dv):
+    """
+    Best-effort extraction of chunk IDs that actually appear in a DataVar.
+
+    Rationale:
+    Some logs report sparse / non-contiguous chunk IDs. Using a synthetic 0..chunkCount-1 range
+    can introduce chunk IDs that never appear in the log, which breaks chunk-node grids and
+    chunk-selection UX.
+    """
+    ids = set()
+    if dv is None:
+        return ids
+
+    # Prefer nodeLifeCycle keys (most reliable indicator that a chunk exists in the log).
+    node_lc = getattr(dv, "nodeLifeCycle", None)
+    if isinstance(node_lc, list):
+        for arrivals_dict in node_lc:
+            if not isinstance(arrivals_dict, dict):
+                continue
+            for cid in arrivals_dict.keys():
+                try:
+                    ids.add(int(cid))
+                except Exception:
+                    continue
+
+    # Fallback: include any chunk index that has lifecycle data.
+    clc = getattr(dv, "chunkLifeCycle", None)
+    if isinstance(clc, list):
+        for cid, by_rank in enumerate(clc):
+            try:
+                if isinstance(by_rank, dict) and by_rank:
+                    ids.add(int(cid))
+            except Exception:
+                continue
+
+    # Fallback: sends records may carry chunk identifiers.
+    sends = getattr(dv, "sends", None)
+    if isinstance(sends, list) and sends:
+        key = None
+        if isinstance(sends[0], dict):
+            for k in ("chunk", "chunk_id", "cid", "data_id"):
+                if k in sends[0]:
+                    key = k
+                    break
+        if key is not None:
+            for rec in sends:
+                if not isinstance(rec, dict):
+                    continue
+                try:
+                    ids.add(int(rec.get(key)))
+                except Exception:
+                    continue
+
+    return ids
+
+
+def _get_collective_dvs(active_topo_id, target_cid, topo_collectives):
+    """
+    Return a list of DataVar objects (one per log) for a specific collective.
+
+    Respects explicit '(none)' selections for that collective, in which case returns [].
+    """
+    if not active_topo_id or not target_cid:
+        return []
+
+    tid = str(active_topo_id)
+    cols = (topo_collectives or {}).get(tid, []) or []
+    coll_obj = None
+    for c in cols:
+        if str(c.get("id")) == str(target_cid):
+            coll_obj = c
+            break
+    if not coll_obj:
+        return []
+
+    # Explicit "(none)" means this collective does not contribute to chunk/data visuals.
+    if "active_data_param" in coll_obj:
+        raw = coll_obj.get("active_data_param")
+        if raw is None or str(raw).strip().lower() in ("", "__none__", "none", "(none)"):
+            return []
+
+    dvs = []
+    for lb in (coll_obj.get("logs") or []):
+        if not isinstance(lb, dict):
+            continue
+        try:
+            lid = int(lb.get("id"))
+        except Exception:
+            continue
+
+        V = MULTI_VIZ_OBJS.get(lid)
+        if V is None:
+            path = lb.get("path", "")
+            try:
+                if str(path).lower().endswith(".json"):
+                    V = JsonVisualizer(path, TOPO_FILE)
+                else:
+                    V = interactiveinfo.Visualizer(path, TOPO_FILE)
+                MULTI_VIZ_OBJS[lid] = V
+            except Exception:
+                V = None
+
+        if V is None:
+            continue
+
+        dv = _select_data_var_for_collective(V, coll_obj)
+        if dv is None:
+            continue
+        dvs.append(dv)
+
+    return dvs
+
+
+def _nodes_with_chunk_by_time_from_dv(dv, chunk_id, t):
+    """
+    Compute nodes that have chunk_id by time t using a specific DataVar, without relying on global VIZ.
+    """
+    have = set()
+    if dv is None:
+        return have
+
+    try:
+        cid = int(chunk_id)
+        tt = float(t)
+    except Exception:
+        return have
+
+    clc = getattr(dv, "chunkLifeCycle", None)
+    if isinstance(clc, list) and 0 <= cid < len(clc) and isinstance(clc[cid], dict):
+        for rank, arrivals in clc[cid].items():
+            if not arrivals:
+                continue
+            try:
+                if min(float(ts) for (ts, _msg) in arrivals) <= tt:
+                    have.add(int(rank))
+            except Exception:
+                continue
+        return have
+
+    node_lc = getattr(dv, "nodeLifeCycle", None)
+    if isinstance(node_lc, list):
+        for rank, arrivals_dict in enumerate(node_lc):
+            if not isinstance(arrivals_dict, dict):
+                continue
+            arrivals = arrivals_dict.get(cid)
+            if arrivals is None:
+                arrivals = arrivals_dict.get(str(cid))
+            if not arrivals:
+                continue
+            try:
+                if min(float(ts) for (ts, _msg) in arrivals) <= tt:
+                    have.add(int(rank))
+            except Exception:
+                continue
+
+    return have
+
 
 def _aggregate_param_values(param_name, t0, t1, data_id, viz_list):
     """Aggregate parameter values across multiple logs (Average for links, Union for data)."""
@@ -2579,10 +2762,46 @@ def _aggregate_param_values(param_name, t0, t1, data_id, viz_list):
             t_mins.append(r.get("t_min", 0))
             t_maxs.append(r.get("t_max", 1))
 
+        # For DataVar coloring, we show one physical edge in the topology.
+        # If the same physical link has traversals in both directions for the same chunk,
+        # choose the direction that got the chunk earlier (smallest t_start).
+        chosen = {}  # undirected_key -> (t_start, t_end, link_dict)
+
+        for l in (all_links or []):
+            try:
+                s = l.get("src")
+                d = l.get("dst")
+                a = int(s)
+                b = int(d)
+                key = (a, b) if a <= b else (b, a)
+            except Exception:
+                sa = str(l.get("src"))
+                sb = str(l.get("dst"))
+                key = (sa, sb) if sa <= sb else (sb, sa)
+
+            try:
+                ts = float(l.get("t_start", l.get("t_end", 0.0)))
+            except Exception:
+                ts = 0.0
+            try:
+                te = float(l.get("t_end", ts))
+            except Exception:
+                te = ts
+
+            cur = chosen.get(key)
+            if cur is None:
+                chosen[key] = (ts, te, l)
+            else:
+                c_ts, c_te, _ = cur
+                if (ts < c_ts) or (ts == c_ts and te < c_te):
+                    chosen[key] = (ts, te, l)
+
+        collapsed_links = [v[2] for v in sorted(chosen.values(), key=lambda it: it[0])]
+
         return {
             "type": "data",
             "mode": "trace",
-            "links": all_links,
+            "links": collapsed_links,
             "nodes": list(all_nodes),
             "t_min": min(t_mins) if t_mins else 0,
             "t_max": max(t_maxs) if t_maxs else 1,
@@ -4740,7 +4959,7 @@ def load_topology_from_file(n_clicks, path, topo_list, current_global_selection,
     topo_list = topo_list or []
     if not path:
         # Validate inputs / state before continuing.
-        return (no_update,) * 15 + (no_update,)
+        return (no_update,) * 17
 
     # Resolve and validate filesystem paths before using them.
     p = os.path.expanduser(path)
@@ -5402,7 +5621,15 @@ def current_selection_summary(sel):
         # Branch based on the current state / selection.
         src = sel.get("source")
         dst = sel.get("target")
-        return f"Link {src} → {dst}"
+        try:
+            a = int(src)
+            b = int(dst)
+            lo, hi = (a, b) if a <= b else (b, a)
+        except Exception:
+            sa = str(src)
+            sb = str(dst)
+            lo, hi = (sa, sb) if sa <= sb else (sb, sa)
+        return f"Link {lo} ↔ {hi}"
 
     return "None"
 
@@ -5426,8 +5653,8 @@ def toggle_current_selection_modal(n_open, n_close, is_open):
 
     which = ctx.triggered[0]["prop_id"].split(".")[0]
     if which == "current-selection-btn":
-        # Branch based on the current state / selection.
-        return True
+        # Toggle: clicking "Details" again closes the panel.
+        return (not bool(is_open))
     if which == "current-selection-close":
         # Branch based on the current state / selection.
         return False
@@ -5442,6 +5669,7 @@ def toggle_current_selection_modal(n_open, n_close, is_open):
     Input("chunk-filter-ids", "data"),
     Input("active-collectives-map", "data"), # CHANGED
     Input("topology-radio", "value"),        # ADDED
+    State("target-collective-id", "data"),   # ADDED
     State("topo-logs", "data"),              # ADDED
     prevent_initial_call=False,
 )
@@ -5452,6 +5680,7 @@ def render_current_selection_details(
     allowed_chunks,
     active_coll_map,
     active_topo_id,
+    target_cid,
     topo_logs
 ):
     # ... style def ...
@@ -5480,21 +5709,68 @@ def render_current_selection_details(
     t1 = seg1
     if seg1 <= seg0: seg1 = seg0 + 1e-9
 
-    allowed_chunk_set = (set(int(c) for c in (allowed_chunks or [])) if allowed_chunks else None)
+        # NOTE: chunk filters are stored per-collective in topo-logs. The global chunk-filter-ids store
+    # represents only the CURRENT target collective. When multiple collectives are active we must
+    # apply filters per-collective so changing the target does not affect other collectives' details.
+    target_cid_int = None
+    try:
+        if target_cid is not None:
+            target_cid_int = int(target_cid)
+    except Exception:
+        target_cid_int = None
+
+    target_allowed_set = None
+    try:
+        if allowed_chunks:
+            target_allowed_set = set(int(c) for c in (allowed_chunks or []))
+            if not target_allowed_set:
+                target_allowed_set = None
+    except Exception:
+        target_allowed_set = None
+
+    # Build per-collective chunk filter map from stored topology data.
+    coll_allowed_map = {}
+    try:
+        tid = str(active_topo_id) if active_topo_id is not None else None
+        if tid and isinstance(topo_logs, dict):
+            for coll in (topo_logs.get(tid) or []):
+                if not isinstance(coll, dict):
+                    continue
+                cid0 = coll.get("id")
+                try:
+                    cid_int = int(cid0)
+                except Exception:
+                    continue
+                ids0 = coll.get("chunk_filter_ids") or []
+                try:
+                    s0 = set(int(x) for x in ids0)
+                except Exception:
+                    s0 = set()
+                coll_allowed_map[cid_int] = (s0 if s0 else None)
+    except Exception:
+        coll_allowed_map = {}
+
+    # Overlay current target's filter from the live store (more up to date during UI transitions).
+    if target_cid_int is not None:
+        coll_allowed_map[target_cid_int] = target_allowed_set
 
     # Use helper
     viz_list = _get_active_viz_list(active_coll_map, active_topo_id, topo_logs)
-    
+
     # We also need labels/colors, so we manually iterate bundles
     bundles = _get_active_log_bundles(active_coll_map, active_topo_id, topo_logs)
     selected_logs = []
-    
+
     # Match bundles to VIZ objects (safe)
     for b in bundles:
-        lid = int(b["id"])
+        try:
+            lid = int(b["id"])
+        except Exception:
+            continue
         V = MULTI_VIZ_OBJS.get(lid)
-        if V: selected_logs.append((lid, b.get("label"), b.get("color"), V))
-        
+        if V:
+            selected_logs.append((lid, b.get("label"), b.get("color"), V, b.get("_coll_id")))
+
     if not selected_logs and VIZ:
         # Fallback if VIZ exists but no bundles active? (Shouldn't happen with correct logic)
         pass
@@ -5516,7 +5792,7 @@ def render_current_selection_details(
         all_post_chunks = set()
         done_post_chunks = set()
 
-        for _lid, _lbl, _col, V in selected_logs:
+        for _lid, _lbl, _col, V, _cid in selected_logs:
             # ... (Existing loop logic) ...
             node_lc = getattr(V, "nodeLifeCycle", [])
             if nid_int < 0 or nid_int >= len(node_lc): continue
@@ -5526,7 +5802,14 @@ def render_current_selection_details(
                 if not events: continue
                 try: icid = int(cid)
                 except: continue
-                if allowed_chunk_set is not None and icid not in allowed_chunk_set: continue
+                allowed_set0 = None
+                try:
+                    if _cid is not None:
+                        allowed_set0 = coll_allowed_map.get(int(_cid))
+                except Exception:
+                    allowed_set0 = None
+                if allowed_set0 and icid not in allowed_set0:
+                    continue
                 try: earliest_any = _safe_min([float(ts) for (ts, _msg) in events], default=None)
                 except: earliest_any = None
                 if earliest_any is not None and earliest_any <= t1: chunks_seen.add(icid)
@@ -5543,20 +5826,25 @@ def render_current_selection_details(
         children.append(html.Div(f"Post-conditions left on this node: {len(all_post_chunks - done_post_chunks)}"))
 
         segment_chunks = set()
-        for (lid, label, color, V) in selected_logs:
+        for (lid, label, color, V, _cid) in selected_logs:
             with _use_viz(V):
                 try: chunks_here, _msg = _chunks_on_node_in_segment(nid_int, seg0, seg1)
                 except: continue
-            if allowed_chunk_set is not None:
-                chunks_here = [c for c in chunks_here if c in allowed_chunk_set]
+            allowed_set = None
+            try:
+                if _cid is not None:
+                    allowed_set = coll_allowed_map.get(int(_cid))
+            except Exception:
+                allowed_set = None
+            if allowed_set:
+                chunks_here = [c for c in chunks_here if int(c) in allowed_set]
             for c in chunks_here: segment_chunks.add(int(c))
 
         if segment_chunks:
-            shown = sorted(segment_chunks)[:100]
-            pretty = ", ".join(map(str, shown)) + ("..." if len(segment_chunks)>100 else "")
+            pretty = ", ".join(map(str, sorted(segment_chunks)))
             children.append(html.Hr())
             children.append(html.Div("Chunks on this node in current segment:", style={"marginTop": "4px"}))
-            children.append(html.Pre(pretty, style={"whiteSpace": "pre-wrap", "margin": "4px 0 0"}))
+            children.append(html.Pre(pretty, style={"whiteSpace": "pre-wrap", "margin": "4px 0 0", "maxHeight": "260px", "overflowY": "auto"}))
 
     # ... (Edge Logic - Replace `logs_in` usage with `selected_logs`) ...
     elif kind == "edge":
@@ -5564,7 +5852,16 @@ def render_current_selection_details(
         dst = sel.get("target")
         cap = sel.get("capacity")
         lat = sel.get("latency")
-        children.append(html.H4(f"Link {src} → {dst}", style={"margin": "0 0 6px"}))
+        try:
+            a = int(src)
+            b = int(dst)
+            lo, hi = (a, b) if a <= b else (b, a)
+        except Exception:
+            sa = str(src)
+            sb = str(dst)
+            lo, hi = (sa, sb) if sa <= sb else (sb, sa)
+
+        children.append(html.H4(f"Link {lo} ↔ {hi}", style={"margin": "0 0 6px"}))
         if cap: children.append(html.Div(f"Capacity: {cap}"))
         if lat: children.append(html.Div(f"Latency: {lat} ms"))
 
@@ -5572,60 +5869,130 @@ def render_current_selection_details(
         except: src_int, dst_int = None, None
 
         has_vars = False
-        for (lid, label, color, V) in selected_logs:
-            if V is None: continue
+        # Directional link vars in details (show both directions separately).
+        for (lid, label, color, V, _cid) in selected_logs:
+            if V is None:
+                continue
             lvars = getattr(V, "link_vars", [])
             for lv in lvars:
                 per_link = getattr(lv, "per_link", {}) or {}
-                series = None
-                if src_int is not None and dst_int is not None:
-                    series = per_link.get((src_int, dst_int)) or per_link.get((dst_int, src_int))
-                if series is None:
-                    series = per_link.get((str(src), str(dst))) or per_link.get((str(dst), str(src)))
-                if series:
-                    has_vars = True
-                    try:
-                        avg_val = _avg_series_on_segment(series, seg0, seg1)
-                        val_str = f"{avg_val:.3f}"
-                        extra = ""
-                        try:
-                            if float(cap or 0) > 0: extra = f" ({(avg_val/float(cap))*100:.1f}%)"
-                        except: pass
-                        children.append(html.Div([
-                            html.Span(f"{lv.name}", style={"fontWeight":"600"}),
-                            html.Span(f" ({label}): ", style={"color":"#666", "fontSize":"0.9em"}),
-                            html.Span(f"{val_str}{extra}")
-                        ]))
-                    except: pass
-        if not has_vars:
-             children.append(html.Div("No link metrics found.", style={"color":"#999", "marginTop":"6px", "fontStyle":"italic"}))
 
-        link_intervals = []
+                s_fwd = None
+                s_rev = None
+                if src_int is not None and dst_int is not None:
+                    s_fwd = per_link.get((src_int, dst_int))
+                    s_rev = per_link.get((dst_int, src_int))
+                if s_fwd is None:
+                    s_fwd = per_link.get((str(src), str(dst)))
+                if s_rev is None:
+                    s_rev = per_link.get((str(dst), str(src)))
+
+                if not s_fwd and not s_rev:
+                    continue
+
+                has_vars = True
+
+                avg_fwd = None
+                avg_rev = None
+                try:
+                    if s_fwd:
+                        avg_fwd = float(_avg_series_on_segment(s_fwd, seg0, seg1))
+                except Exception:
+                    avg_fwd = None
+                try:
+                    if s_rev:
+                        avg_rev = float(_avg_series_on_segment(s_rev, seg0, seg1))
+                except Exception:
+                    avg_rev = None
+
+                try:
+                    cap_f = float(cap or 0)
+                except Exception:
+                    cap_f = 0.0
+
+                def _fmt(v):
+                    if v is None:
+                        return "n/a"
+                    if cap_f > 0:
+                        return f"{v:.3f} ({(v / cap_f) * 100:.1f}%)"
+                    return f"{v:.3f}"
+
+                # Display log label only if we have multiple logs.
+                multi = len(selected_logs) > 1
+                header = [html.Span(f"{lv.name}", style={"fontWeight": "600"})]
+                if multi:
+                    header.append(html.Span(f" ({label}):", style={"color": "#666", "fontSize": "0.9em"}))
+                else:
+                    header.append(html.Span(":", style={"color": "#666", "fontSize": "0.9em"}))
+
+                children.append(html.Div([
+                    html.Div(header),
+                    html.Div([
+                        html.Div(f"{src} → {dst}: {_fmt(avg_fwd)}"),
+                        html.Div(f"{dst} → {src}: {_fmt(avg_rev)}"),
+                    ], style={"marginLeft": "10px"}),
+                ]))
+        if not has_vars:
+            children.append(html.Div("No link metrics found.", style={"color":"#999", "marginTop":"6px", "fontStyle":"italic"}))
+
+        # Directional chunk intervals on this link (grouped by collective, then direction).
         if src_int is not None and dst_int is not None:
-            for (lid, label, color, V) in selected_logs:
+            dir_ab = f"{src}→{dst}"
+            dir_ba = f"{dst}→{src}"
+
+            chunks_section = []
+
+            for (lid, label, color, V, _cid) in selected_logs:
                 DV = getattr(V, "primary_data", None)
-                if not DV: continue
-                try: detailed = DV.link_chunks_detailed_in_segment(src_int, dst_int, seg0, seg1)
-                except: detailed = []
-                for rec in detailed:
-                    c = int(rec.get("chunk"))
-                    if allowed_chunk_set and c not in allowed_chunk_set: continue
-                    link_intervals.append({
-                        "chunk": c, "t_start": float(rec["t_start"]), "t_end": float(rec["t_end"]),
-                        "label": label, "log_id": lid
-                    })
-        
-        if link_intervals:
-            link_intervals.sort(key=lambda it: it["t_end"])
-            lines = []
-            multi = len(selected_logs) > 1
-            for rec in link_intervals[:120]:
-                line = f"chunk {rec['chunk']}" + (f" ({rec['label']})" if multi else "") + f": {rec['t_start']:.3f} → {rec['t_end']:.3f}"
-                lines.append(line)
-            if len(link_intervals) > 120: lines.append("...")
-            children.append(html.Hr())
-            children.append(html.Div("Chunks on link:", style={"marginTop": "4px"}))
-            children.append(html.Pre("\n".join(lines), style={"whiteSpace": "pre-wrap", "margin": "4px 0 0"}))
+                if not DV:
+                    continue
+                lci = getattr(DV, "linkChunkIntervals", {}) or {}
+
+                def _collect_dir(s0, d0):
+                    out = []
+                    for rec in (lci.get((s0, d0), []) or []):
+                        try:
+                            st, en, ch = rec
+                            st = float(st)
+                            en = float(en)
+                            c = int(ch)
+                        except Exception:
+                            continue
+                        # Only show chunks that were on the link at some point inside the current time window.
+                        if en < seg0 or st > seg1:
+                            continue
+                        out.append((st, en, c))
+                    out.sort(key=lambda x: (x[1], x[0], x[2]))
+                    return out
+
+                ab = _collect_dir(src_int, dst_int)
+                ba = _collect_dir(dst_int, src_int)
+
+                if not ab and not ba:
+                    continue
+
+                title = label if (label is not None and str(label).strip() != "") else f"Collective {lid}"
+                chunks_section.append(html.Div(str(title), style={"fontWeight": "600", "marginTop": "6px"}))
+
+                lines = []
+                lines.append(f"{dir_ab}:")
+                for (st, en, c) in ab:
+                    lines.append(f"  chunk {c}: {st:.3f} → {en:.3f}")
+
+                # Separator between directions.
+                lines.append("-" * 28)
+
+                lines.append(f"{dir_ba}:")
+                for (st, en, c) in ba:
+                    lines.append(f"  chunk {c}: {st:.3f} → {en:.3f}")
+
+                chunks_section.append(html.Pre("\n".join(lines), style={"whiteSpace": "pre-wrap", "margin": "4px 0 0"}))
+
+            if chunks_section:
+                children.append(html.Hr())
+                children.append(html.Div("Chunks on link:", style={"marginTop": "4px"}))
+                children.append(html.Div(chunks_section, style={"maxHeight": "320px", "overflowY": "auto"}))
+
 
     return html.Div(children, style={"fontSize": "12px", "lineHeight": "1.4"}), base_style
 
@@ -5751,6 +6118,22 @@ def hide_selected(n_hide, hidden, selectedNodeData):
     prevent_initial_call=True
 )
 def clear_hide_and_filters(_n_view, _n_all, elements_base, saved_layout):
+
+    # Guard against spurious callback triggers caused by dynamic layout re-mounting (n_clicks resetting to 0).
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    prop_id = (ctx.triggered[0] or {}).get("prop_id", "")
+    trig_id = prop_id.split(".", 1)[0]
+    if trig_id == "clear-view-btn":
+        if not isinstance(_n_view, (int, float)) or _n_view <= 0:
+            raise PreventUpdate
+    elif trig_id == "clear-all-filters":
+        if not isinstance(_n_all, (int, float)) or _n_all <= 0:
+            raise PreventUpdate
+    else:
+        raise PreventUpdate
+
     # Reapply positions: prefer the currently selected/saved layout, else fall back to initial baked positions.
     # Apply the current filter settings and compute the resulting subset for display.
     pos_map = {}
@@ -7173,7 +7556,12 @@ def update_available_params(active_coll_map, active_topo_id, topo_logs):
     
     tid = str(active_topo_id)
     all_colls = (topo_logs or {}).get(tid, [])
-    active_cids = set(int(x) for x in (active_coll_map or {}).get(tid, []))
+    active_cids = set()
+    for x in ((active_coll_map or {}).get(tid, []) or []):
+        try:
+            active_cids.add(int(x))
+        except Exception:
+            continue
     
     unique_params = {}
 
@@ -8097,7 +8485,7 @@ def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chun
                 lv_list = getattr(v, "link_vars", [])
                 if not lv_list: continue
                 link_var = lv_list[0]
-                per_link = getattr(link_var, "per_link", {})
+                per_link = getattr(link_var, "per_link", {}) or {}
                 
                 for el in (elements or []):
                     # Iterate over the relevant items and accumulate results.
@@ -8105,15 +8493,51 @@ def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chun
                     if "source" not in d: continue
                     try:
                         src, dst = int(d["source"]), int(d["target"])
-                        series = per_link.get((src, dst)) or per_link.get((dst, src))
-                        if not series: continue
-                        avg = _avg_series_on_segment(series, seg0, seg1)
-                        if avg <= 0.0: continue
-                        
-                        key = (src, dst)
-                        vals[key] = vals.get(key, 0.0) + avg
-                        counts[key] = counts.get(key, 0) + 1
-                    except: pass
+                    except Exception:
+                        continue
+
+                    # IMPORTANT: logs are directional, topology is undirected.
+                    # For coloring, use the dominant direction (max avg over segment).
+                    s_fwd = per_link.get((src, dst))
+                    s_rev = per_link.get((dst, src))
+                    if s_fwd is None:
+                        s_fwd = per_link.get((str(src), str(dst)))
+                    if s_rev is None:
+                        s_rev = per_link.get((str(dst), str(src)))
+
+                    best = None
+                    if s_fwd:
+                        try:
+                            best = float(_avg_series_on_segment(s_fwd, seg0, seg1))
+                        except Exception:
+                            best = None
+                    if s_rev:
+                        try:
+                            rev = float(_avg_series_on_segment(s_rev, seg0, seg1))
+                        except Exception:
+                            rev = None
+                        if best is None or (rev is not None and rev > best):
+                            best = rev
+
+                    if best is None:
+                        continue
+
+                    if use_ratio:
+                        try:
+                            cap = float(d.get("capacity", 0) or 0)
+                        except Exception:
+                            cap = 0.0
+                        if cap > 0:
+                            best = best / cap
+                        else:
+                            continue
+
+                    if best <= 0.0:
+                        continue
+
+                    key = (src, dst)
+                    vals[key] = vals.get(key, 0.0) + best
+                    counts[key] = counts.get(key, 0) + 1
 
             final_vals = {}
             for k, total in vals.items():
@@ -8212,6 +8636,26 @@ def chunk_filter_actions(
 
     which = ctx.triggered[0]["prop_id"].split(".")[0]
 
+    # Guard against spurious triggers caused by dynamic layout re-mounting (n_clicks resetting to 0).
+    if which == "apply-chunk-filter":
+        if not isinstance(n_apply, (int, float)) or n_apply <= 0:
+            raise PreventUpdate
+    elif which == "chunk-add-range-btn":
+        if not isinstance(n_add, (int, float)) or n_add <= 0:
+            raise PreventUpdate
+    elif which == "clear-chunk-filter":
+        if not isinstance(n_clear, (int, float)) or n_clear <= 0:
+            raise PreventUpdate
+    elif which == "pf-apply-chunk-filter":
+        if not isinstance(n_pf_apply, (int, float)) or n_pf_apply <= 0:
+            raise PreventUpdate
+    elif which == "pf-chunk-add-range-btn":
+        if not isinstance(n_pf_add, (int, float)) or n_pf_add <= 0:
+            raise PreventUpdate
+    elif which == "pf-clear-chunk-filter":
+        if not isinstance(n_pf_clear, (int, float)) or n_pf_clear <= 0:
+            raise PreventUpdate
+
     # Choose which input-set to use (main Chunk Filters panel vs Parameter Filters panel)
     use_pf = which.startswith("pf-")
     spec_in = (pf_spec if use_pf else spec) or ""
@@ -8243,11 +8687,28 @@ def chunk_filter_actions(
     # Decide candidate chunks
     if which in ("apply-chunk-filter", "pf-apply-chunk-filter"):
         ids = _parse_num_spec(spec_in)
+
+        # Prefer the set of chunk IDs that actually appear in the *target collective's* active data-var logs.
+        avail = set()
         try:
-            total = int(getattr(VIZ, "chunkCount", 0) or 0)
+            dvs0 = _get_collective_dvs(active_tid, target_cid, topo_collectives)
+            for _dv0 in (dvs0 or []):
+                avail |= _collect_chunk_ids_from_dv(_dv0)
         except Exception:
-            total = 0
-        candidates = sorted(set(ids)) if ids else list(range(total))
+            avail = set()
+
+        if ids:
+            candidates = sorted(set(ids))
+        else:
+            if avail:
+                candidates = sorted(avail)
+            else:
+                # Legacy fallback: preserve old behavior if we cannot infer chunk IDs from the logs.
+                try:
+                    total = int(getattr(VIZ, "chunkCount", 0) or 0)
+                except Exception:
+                    total = 0
+                candidates = list(range(total))
 
     elif which in ("chunk-add-range-btn", "pf-chunk-add-range-btn"):
         try:
@@ -8277,17 +8738,37 @@ def chunk_filter_actions(
     t1 = float((seg or [TIME_MIN, TIME_MAX])[1])
     threshold = 0 if min_nodes_in in (None, "") else max(0, int(min_nodes_in))
 
-    if threshold > 0 and VIZ is not None:
-        keep = []
-        for cid in candidates:
-            try:
-                have, _ = _nodes_with_chunk_by_time(cid, t1)
+    if threshold > 0:
+        # Prefer per-collective DataVar lifecycles (works correctly in multi-log/multi-collective mode).
+        dvs0 = _get_collective_dvs(active_tid, target_cid, topo_collectives)
+        if dvs0:
+            keep = []
+            for cid in candidates:
+                have = set()
+                for _dv0 in (dvs0 or []):
+                    try:
+                        have |= _nodes_with_chunk_by_time_from_dv(_dv0, cid, t1)
+                    except Exception:
+                        continue
                 if len(have) >= threshold:
                     keep.append(cid)
-            except Exception:
-                pass
-        out_ids = sorted(keep)
-        msg = f"Applied chunk filter with min nodes ≥ {threshold}: {len(out_ids)} chunk(s)."
+            out_ids = sorted(keep)
+            msg = f"Applied chunk filter with min nodes ≥ {threshold}: {len(out_ids)} chunk(s)."
+        elif VIZ is not None:
+            # Legacy fallback (single-log mode).
+            keep = []
+            for cid in candidates:
+                try:
+                    have, _ = _nodes_with_chunk_by_time(cid, t1)
+                    if len(have) >= threshold:
+                        keep.append(cid)
+                except Exception:
+                    pass
+            out_ids = sorted(keep)
+            msg = f"Applied chunk filter with min nodes ≥ {threshold}: {len(out_ids)} chunk(s)."
+        else:
+            out_ids = sorted(candidates)
+            msg = f"Applied chunk filter: {len(out_ids)} chunk(s)."
     else:
         out_ids = sorted(candidates)
         msg = f"Applied chunk filter: {len(out_ids)} chunk(s)."
@@ -8940,14 +9421,27 @@ def build_grid(seg, allowed_chunks, node_filter_ids, isolate_mode, isolate_snaps
     if allowed_chunks:
         chunks_full = sorted(set(int(c) for c in allowed_chunks))
     else:
-        max_chunk = 0
+        # Derive the actual chunk IDs that appear in the selected logs (do NOT synthesize 0..chunkCount-1).
+        chunks_set = set()
         for (_cid, _name, _col, viz_list) in selected_collectives:
             for (_lid, _V, _DV) in (viz_list or []):
                 try:
-                    max_chunk = max(max_chunk, int(getattr(_DV, "chunkCount", 0)) - 1)
+                    chunks_set |= _collect_chunk_ids_from_dv(_DV)
                 except Exception:
                     continue
-        chunks_full = list(range(max_chunk + 1)) if max_chunk > 0 else []
+
+        chunks_full = sorted(chunks_set)
+
+        # Last-resort fallback (legacy): if we failed to detect any chunk IDs, fall back to chunkCount.
+        if not chunks_full:
+            max_chunk = 0
+            for (_cid, _name, _col, viz_list) in selected_collectives:
+                for (_lid, _V, _DV) in (viz_list or []):
+                    try:
+                        max_chunk = max(max_chunk, int(getattr(_DV, "chunkCount", 0)) - 1)
+                    except Exception:
+                        continue
+            chunks_full = list(range(max_chunk + 1)) if max_chunk > 0 else []
 
     # Cap total cells for performance: shrink columns first (chunks), keep all rows when possible.
     capped_note = None
@@ -9218,7 +9712,7 @@ def build_postleft_chart(
     if chosen:
         lines = chosen[:8]
         for n in lines:
-            fig.add_trace(go.Scatter(x=times, y=series_for_node(n), mode="lines", name=f"node {n}"))
+            fig.add_trace(go.Scatter(x=times, y=series_for_node(n), mode="lines", line_shape="hv", name=f"node {n}"))
         if len(chosen) > 8:
             fig.add_annotation(text=f"+{len(chosen)-8} more selected nodes (not shown)",
                                xref="paper", yref="paper", x=1.0, y=1.05, showarrow=False)
@@ -9240,7 +9734,7 @@ def build_postleft_chart(
         # Precompute per-node series once, then average by column
         node_series = [series_for_node(n) for n in hosts]
         avg = [sum(col) / float(len(hosts)) for col in zip(*node_series)]
-        fig.add_trace(go.Scatter(x=times, y=avg, mode="lines", name="Average (visible hosts)"))
+        fig.add_trace(go.Scatter(x=times, y=avg, mode="lines", line_shape="hv", name="Average (visible hosts)"))
         if sampled_note:
             fig.add_annotation(text=sampled_note, xref="paper", yref="paper", x=0, y=1.08, showarrow=False, align="left")
 
@@ -10280,8 +10774,32 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
     t0, t1 = (seg or [TIME_MIN, TIME_MAX])
     t0 = float(t0); t1 = float(t1)
     if t1 < t0: t0, t1 = t1, t0
-    N = 200 if t1 > t0 else 1
-    t = np.linspace(t0, t1, N, dtype=float)
+    # Build an evaluation time-grid from actual event timestamps (highest resolution available in the log).
+    # This is the practical equivalent of "sample every nanosecond" without exploding runtime/memory.
+    def _make_time_grid(candidates, t0, t1, max_points=8000):
+        """Return the evaluation time grid for series computation.
+
+        For this UI, what you want visually is a *step-like* curve (90° turns) rather than
+        diagonals when many chunks complete close together. A uniform grid + step-shaped
+        lines achieves that without generating an enormous number of points.
+
+        'max_points' is kept for safety and future use.
+        """
+        try:
+            t0f = float(t0); t1f = float(t1)
+        except Exception:
+            t0f, t1f = 0.0, 0.0
+        if t1f < t0f:
+            t0f, t1f = t1f, t0f
+
+        span = max(0.0, t1f - t0f)
+        if span == 0.0:
+            return np.asarray([t0f], dtype=float)
+
+        # Aim for a reasonably smooth curve without excessive point-count.
+        n = int(min(max_points, max(120, 600)))
+        return np.linspace(t0f, t1f, n, dtype=float)
+
 
     # Resolve active logs
     logs = _get_active_log_bundles(active_coll_map, active_topo_id, topo_logs)
@@ -10341,12 +10859,37 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
 
             # 4. Compute Total Flow (Sum of all links)
             # target_var.per_link = { (src,dst): [(t, val), ...], ... }
-            total_series = np.zeros_like(t)
+            # Use union of per-link change points (within the segment) as the evaluation grid.
+            _cand_t = []
+            try:
+                for (_k, series0) in (target_var.per_link or {}).items():
+                    if not series0:
+                        continue
+                    for pt in series0:
+                        try:
+                            _cand_t.append(float(pt[0]))
+                        except Exception:
+                            continue
+                    if len(_cand_t) > 2 * 8000:
+                        break
+            except Exception:
+                pass
+            # Cap link-mode series grid to this log's own change points to preserve resolution for shorter collectives.
+            t1_eff = float(t1)
+            try:
+                if _cand_t:
+                    t1_eff = min(float(t1), float(max(_cand_t)))
+            except Exception:
+                t1_eff = float(t1)
+            if t1_eff < float(t0):
+                t1_eff = float(t0)
+            t_local = _make_time_grid(_cand_t, t0, t1_eff, max_points=8000)
+            total_series = np.zeros_like(t_local)
             
             # Iterate ALL links in this variable
             # (Note: we could optimize by filtering links visible in the graph, 
             #  but usually "Total Flow" implies the whole network state)
-            for (_src, _dst), series in target_var.per_link.items():
+            for (_src, _dst), series in (target_var.per_link or {}).items():
                 if not series: continue
                 # series is list of (time, val). Values are step functions.
                 # We need to sample this series at times `t`.
@@ -10358,14 +10901,14 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
                 # `searchsorted` gives the index where `t` would be inserted.
                 # Since these are step functions (value holds until next change),
                 # we want the value at index `idx - 1`.
-                idx = np.searchsorted(times, t, side='right') - 1
+                idx = np.searchsorted(times, t_local, side='right') - 1
                 
                 # Fix indices < 0 (before first event -> value is 0)
                 valid_mask = idx >= 0
                 
                 # Accumulate
                 # Create a temp array for this link's contribution
-                link_contrib = np.zeros_like(t)
+                link_contrib = np.zeros_like(t_local)
                 link_contrib[valid_mask] = vals[idx[valid_mask]]
                 
                 total_series += link_contrib
@@ -10378,7 +10921,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             seen_colls.add(lg)
 
             fig.add_trace(go.Scatter(
-                x=t, y=total_series, 
+                x=t_local, y=total_series, 
                 mode="lines", 
                 name=f"{coll_name} (Total)", 
                 line=dict(color=coll_color), 
@@ -10517,38 +11060,90 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             fin_map = {}
             start_map = {}
 
+        # Per-log series time range:
+        # When multiple collectives are active, the global segment slider may be dominated by the
+        # longest-running collective. If we sample every series on the global [t0,t1], shorter logs
+        # get a very coarse sampling grid and their step-changes appear overly compressed.
+        #
+        # Instead, cap the series evaluation grid to this log's own observed max-time (within
+        # the global [t0,t1] window). This preserves resolution for shorter collectives.
+        cand_t = [t0]
+        if s_col is not None and not df.empty:
+            try:
+                cand_t.extend(df[s_col].to_numpy(dtype=float).tolist())
+            except Exception:
+                pass
+            try:
+                cand_t.extend(df[e_col].to_numpy(dtype=float).tolist())
+            except Exception:
+                pass
+        try:
+            cand_t.extend([float(v) for v in (start_map or {}).values()])
+        except Exception:
+            pass
+        try:
+            cand_t.extend([float(v) for v in (fin_map or {}).values()])
+        except Exception:
+            pass
+        try:
+            if V is not None:
+                cand_t.append(float(getattr(V, "time", 0.0) or 0.0))
+        except Exception:
+            pass
+        
+        # Compute local end-time for this log.
+        tmax_local = None
+        try:
+            finite = [float(x) for x in cand_t if x is not None and np.isfinite(float(x))]
+            tmax_local = max(finite) if finite else None
+        except Exception:
+            tmax_local = None
+        
+        t1_eff = float(t1)
+        if tmax_local is not None:
+            t1_eff = min(float(t1), float(tmax_local))
+        if t1_eff < float(t0):
+            t1_eff = float(t0)
+        
+        t_local = _make_time_grid(cand_t, t0, t1_eff, max_points=8000)
+
         def series_time():
-            return t.copy()
+            return t_local.copy()
 
         def series_wip():
             if s_col is not None and not df.empty:
                 s_arr = np.sort(df[s_col].to_numpy(dtype=float))
                 e_arr = np.sort(df[e_col].to_numpy(dtype=float))
-                return (np.searchsorted(s_arr, t, side="right") -
-                        np.searchsorted(e_arr, t, side="right")).astype(float)
+                return (np.searchsorted(s_arr, t_local, side="right") -
+                        np.searchsorted(e_arr, t_local, side="right")).astype(float)
             starts_arr = np.sort(np.array([float(v) for v in (start_map or {}).values()], dtype=float))
             fins_arr = np.sort(np.array([float(v) for v in (fin_map or {}).values()], dtype=float))
             if starts_arr.size == 0 or fins_arr.size == 0:
-                return np.full_like(t, np.nan, dtype=float)
-            return (np.searchsorted(starts_arr, t, side="right") -
-                    np.searchsorted(fins_arr, t, side="right")).astype(float)
+                return np.full_like(t_local, np.nan, dtype=float)
+            return (np.searchsorted(starts_arr, t_local, side="right") -
+                    np.searchsorted(fins_arr, t_local, side="right")).astype(float)
 
         def series_cum_finished():
             fins_arr = np.sort(np.array([float(v) for v in (fin_map or {}).values()], dtype=float))
             if fins_arr.size == 0 and s_col is not None and not df.empty:
                 fins_arr = np.sort(df[e_col].to_numpy(dtype=float))
             if fins_arr.size == 0:
-                return np.full_like(t, np.nan, dtype=float)
-            return np.searchsorted(fins_arr, t, side="right").astype(float)
+                return np.full_like(t_local, np.nan, dtype=float)
+            return np.searchsorted(fins_arr, t_local, side="right").astype(float)
 
         def series_avg_send_duration():
             if s_col is None or df.empty:
-                return np.full_like(t, np.nan, dtype=float)
-            dt = (t[1] - t[0]) if len(t) > 1 else 1.0
-            edges = np.concatenate([t - 0.5 * dt, [t[-1] + 0.5 * dt]])
-            idx = np.clip(np.digitize(df[e_col].to_numpy(dtype=float), edges) - 1, 0, len(t) - 1)
-            num = np.bincount(idx, weights=df["duration"].to_numpy(dtype=float), minlength=len(t)).astype(float)
-            den = np.bincount(idx, minlength=len(t)).astype(float)
+                return np.full_like(t_local, np.nan, dtype=float)
+            # Build bin edges that work for non-uniform t_local: midpoints between consecutive samples.
+            if len(t_local) > 1:
+                mids = 0.5 * (t_local[1:] + t_local[:-1])
+                edges = np.concatenate([[t_local[0] - 1e-9], mids, [t_local[-1] + 1e-9]])
+            else:
+                edges = np.asarray([t_local[0] - 1e-9, t_local[0] + 1e-9], dtype=float)
+
+            idx = np.clip(np.digitize(df[e_col].to_numpy(dtype=float), edges) - 1, 0, len(t_local) - 1)
+            num = np.bincount(idx, weights=df["duration"].to_numpy(dtype=float), minlength=len(t_local)).astype(float)
+            den = np.bincount(idx, minlength=len(t_local)).astype(float)
             with np.errstate(divide="ignore", invalid="ignore"):
                 y = np.where(den > 0, num / den, np.nan)
             return y
@@ -10556,7 +11151,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
         def series_postleft_avg():
             # Average "chunks left to receive" across allowed nodes, for the selected data var.
             if dv is None or (not allowed_nodes):
-                return np.full_like(t, np.nan, dtype=float)
+                return np.full_like(t_local, np.nan, dtype=float)
 
             node_lc = getattr(dv, "nodeLifeCycle", [])
             allowed_chunks = set(int(c) for c in (chunk_filter_ids or [])) if chunk_filter_ids else None
@@ -10588,12 +11183,12 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
                 firsts = np.sort(np.array(firsts, dtype=float))
                 tot = float(firsts.size)
                 if tot == 0:
-                    per_host.append(np.zeros_like(t, dtype=float))
+                    per_host.append(np.zeros_like(t_local, dtype=float))
                 else:
-                    per_host.append(tot - np.searchsorted(firsts, t, side="right").astype(float))
+                    per_host.append(tot - np.searchsorted(firsts, t_local, side="right").astype(float))
 
             if not per_host:
-                return np.full_like(t, np.nan, dtype=float)
+                return np.full_like(t_local, np.nan, dtype=float)
             Y = np.vstack(per_host).astype(float)
             return np.nanmean(Y, axis=0)
 
@@ -10625,7 +11220,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
                 vals = np.array([])
             return times, vals
 
-        return SERIES_FUNCS, is_series, is_event, event_vals, df
+        return SERIES_FUNCS, is_series, is_event, event_vals, df, t_local
 
     # ... (Rendering loop remains identical) ...
     def kind(sel, is_series, is_event):
@@ -10636,7 +11231,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
 
     any_data = False
     for i, log in enumerate(logs):
-        SERIES_FUNCS, is_series, is_event, event_vals, df = build_series_funcs_for_log(log)
+        SERIES_FUNCS, is_series, is_event, event_vals, df, t_local = build_series_funcs_for_log(log)
         kx = kind(x_sel, is_series, is_event)
         ky = kind(y_sel, is_series, is_event)
         name = f"[{log['id']}] {log['label']}"
@@ -10646,7 +11241,13 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             X = SERIES_FUNCS[x_sel](); Y = SERIES_FUNCS[y_sel]()
             mask = np.isfinite(X) & np.isfinite(Y)
             if mask.sum() > 0:
-                fig.add_trace(go.Scatter(x=X[mask], y=Y[mask], mode="lines", name=name, line=dict(color=color)))
+                fig.add_trace(go.Scatter(
+                    x=X[mask], y=Y[mask],
+                    mode="lines",
+                    line_shape=("hv" if str(x_sel).lower() == "time" else "linear"),
+                    name=name,
+                    line=dict(color=color)
+                ))
                 any_data = True
             continue
 
@@ -10662,7 +11263,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             ty, Vy = event_vals(y_sel)
             if len(Vy) > 0:
                 X_series = SERIES_FUNCS[x_sel]()
-                X = np.interp(ty, t, X_series)
+                X = np.interp(ty, t_local, X_series)
                 fig.add_trace(go.Scatter(x=X, y=Vy, mode="markers", name=name, marker=dict(size=5, opacity=0.6, color=color)))
                 any_data = True
             continue
@@ -10671,7 +11272,7 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             tx, Vx = event_vals(x_sel)
             if len(Vx) > 0:
                 Y_series = SERIES_FUNCS[y_sel]()
-                Y = np.interp(tx, t, Y_series)
+                Y = np.interp(tx, t_local, Y_series)
                 fig.add_trace(go.Scatter(x=Vx, y=Y, mode="markers", name=name, marker=dict(size=5, opacity=0.6, color=color)))
                 any_data = True
             continue

@@ -1,0 +1,70 @@
+.menubar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  /* You already have TOPBAR_STYLE; these won't override inline styles */
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.menu {
+  position: relative;
+  display: inline-block;
+}
+
+.menu__btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menu:hover .menu__btn {
+  background: #ffffff;
+  border-color: #c8c8c8;
+}
+
+.menu__content{
+  display:none;
+  position:absolute;
+  top:100%;       /* stick directly to the bottom of the button */
+  left:0;
+  min-width:220px;
+  background:#ffffff;
+  border:1px solid #c8c8c8;
+  border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.12);
+  padding:6px;
+  margin-top:0;   /* <-- no gap here */
+  z-index:9999;
+}
+
+
+.menu:hover .menu__content {
+  display: block;   /* Word-like hover dropdown */
+}
+
+.menu__item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menu__item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.menu__sep {
+  height: 1px;
+  background: #e6e6e6;
+  margin: 6px 4px;
+}
