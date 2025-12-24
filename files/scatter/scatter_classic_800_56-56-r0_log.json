@@ -1,0 +1,1355 @@
+{
+    "Flow": {
+        "Vartype": "link",
+        "Values": [
+            {
+                "time": 0,
+                "link": [
+                    97,
+                    32
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    97
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    105,
+                    40
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 3199999999994
+            },
+            {
+                "time": 0,
+                "link": [
+                    73,
+                    8
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    105
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    89
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    113,
+                    48
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    89,
+                    24
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    73
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    121
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    81
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    121,
+                    56
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    81,
+                    16
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    64,
+                    113
+                ],
+                "flow": 457142857142
+            },
+            {
+                "time": 0,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 3199999999994
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    73
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    73,
+                    8
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    81
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    81,
+                    16
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    89
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    89,
+                    24
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    97
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    97,
+                    32
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    105
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    105,
+                    40
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    113
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    113,
+                    48
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    0,
+                    65
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    65,
+                    64
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    64,
+                    121
+                ],
+                "flow": 0
+            },
+            {
+                "time": 14,
+                "link": [
+                    121,
+                    56
+                ],
+                "flow": 0
+            }
+        ]
+    },
+    "Dvars": {
+        "Vartype": "data",
+        "Varcount": 8,
+        "Starting postcons": {
+            "0": [
+                0
+            ],
+            "8": [
+                8
+            ],
+            "16": [
+                16
+            ],
+            "24": [
+                24
+            ],
+            "32": [
+                32
+            ],
+            "40": [
+                40
+            ],
+            "48": [
+                48
+            ],
+            "56": [
+                56
+            ]
+        },
+        "Starting chunks": {
+            "0": [
+                40,
+                32,
+                48,
+                56,
+                0,
+                8,
+                16,
+                24
+            ]
+        },
+        "Values": [
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    73
+                ],
+                "src": 64,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 73,
+                "src": 64,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    73,
+                    8
+                ],
+                "src": 73,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 8,
+                "src": 73,
+                "data_id": 8,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    81
+                ],
+                "src": 64,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 81,
+                "src": 64,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    81,
+                    16
+                ],
+                "src": 81,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 16,
+                "src": 81,
+                "data_id": 16,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    89
+                ],
+                "src": 64,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 89,
+                "src": 64,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    89,
+                    24
+                ],
+                "src": 89,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 24,
+                "src": 89,
+                "data_id": 24,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    97
+                ],
+                "src": 64,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 97,
+                "src": 64,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    97,
+                    32
+                ],
+                "src": 97,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 32,
+                "src": 97,
+                "data_id": 32,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    105
+                ],
+                "src": 64,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 105,
+                "src": 64,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    105,
+                    40
+                ],
+                "src": 105,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 40,
+                "src": 105,
+                "data_id": 40,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    113
+                ],
+                "src": 64,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 113,
+                "src": 64,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    113,
+                    48
+                ],
+                "src": 113,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 48,
+                "src": 113,
+                "data_id": 48,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    64,
+                    121
+                ],
+                "src": 64,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 121,
+                "src": 64,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": [
+                    121,
+                    56
+                ],
+                "src": 121,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 0,
+                "entity_id": 56,
+                "src": 121,
+                "data_id": 56,
+                "enum": "start"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 8,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 8,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 8,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 8,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    73
+                ],
+                "src": 64,
+                "data_id": 8,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 73,
+                "src": 64,
+                "data_id": 8,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    73,
+                    8
+                ],
+                "src": 73,
+                "data_id": 8,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 8,
+                "src": 73,
+                "data_id": 8,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 16,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 16,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 16,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 16,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    81
+                ],
+                "src": 64,
+                "data_id": 16,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 81,
+                "src": 64,
+                "data_id": 16,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    81,
+                    16
+                ],
+                "src": 81,
+                "data_id": 16,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 16,
+                "src": 81,
+                "data_id": 16,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 24,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 24,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 24,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 24,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    89
+                ],
+                "src": 64,
+                "data_id": 24,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 89,
+                "src": 64,
+                "data_id": 24,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    89,
+                    24
+                ],
+                "src": 89,
+                "data_id": 24,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 24,
+                "src": 89,
+                "data_id": 24,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 32,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 32,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 32,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 32,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    97
+                ],
+                "src": 64,
+                "data_id": 32,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 97,
+                "src": 64,
+                "data_id": 32,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    97,
+                    32
+                ],
+                "src": 97,
+                "data_id": 32,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 32,
+                "src": 97,
+                "data_id": 32,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 40,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 40,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 40,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 40,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    105
+                ],
+                "src": 64,
+                "data_id": 40,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 105,
+                "src": 64,
+                "data_id": 40,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    105,
+                    40
+                ],
+                "src": 105,
+                "data_id": 40,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 40,
+                "src": 105,
+                "data_id": 40,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 48,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 48,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 48,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 48,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    113
+                ],
+                "src": 64,
+                "data_id": 48,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 113,
+                "src": 64,
+                "data_id": 48,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    113,
+                    48
+                ],
+                "src": 113,
+                "data_id": 48,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 48,
+                "src": 113,
+                "data_id": 48,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    0,
+                    65
+                ],
+                "src": 0,
+                "data_id": 56,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 65,
+                "src": 0,
+                "data_id": 56,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    65,
+                    64
+                ],
+                "src": 65,
+                "data_id": 56,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 64,
+                "src": 65,
+                "data_id": 56,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    64,
+                    121
+                ],
+                "src": 64,
+                "data_id": 56,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 121,
+                "src": 64,
+                "data_id": 56,
+                "enum": "arrive"
+            },
+            {
+                "time": 14,
+                "entity_id": [
+                    121,
+                    56
+                ],
+                "src": 121,
+                "data_id": 56,
+                "enum": "leave"
+            },
+            {
+                "time": 14,
+                "entity_id": 56,
+                "src": 121,
+                "data_id": 56,
+                "enum": "arrive"
+            }
+        ]
+    }
+}

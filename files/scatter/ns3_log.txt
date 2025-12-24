@@ -1,0 +1,47 @@
+{"type": "Configuration", "paths_per_flow": 1, "enable_flow_paths_logger": 0}
+Simulation time 0ns
+Flow #0 info 0x119cd00
+Flow #0 path #0 0 65 64 73 8
+Flow #0 transmitting
+Flow #1 info 0x12caa30
+Flow #1 path #0 0 65 64 81 16
+Flow #1 transmitting
+Flow #2 info 0x12c0fe0
+Flow #2 path #0 0 65 64 89 24
+Flow #2 transmitting
+Flow #3 info 0x1198bc0
+Flow #3 path #0 0 65 64 97 32
+Flow #3 transmitting
+Flow #4 info 0x12c1e60
+Flow #4 path #0 0 65 64 105 40
+Flow #4 transmitting
+Flow #5 info 0x12c16c0
+Flow #5 path #0 0 65 64 113 48
+Flow #5 transmitting
+Flow #6 info 0x12c2fb0
+Flow #6 path #0 0 65 64 121 56
+Flow #6 transmitting
+Link (97,32) throughput 457142857142bps
+Link (64,97) throughput 457142857142bps
+Link (105,40) throughput 457142857142bps
+Link (0,65) throughput 3199999999994bps
+Link (73,8) throughput 457142857142bps
+Link (64,105) throughput 457142857142bps
+Link (64,89) throughput 457142857142bps
+Link (113,48) throughput 457142857142bps
+Link (89,24) throughput 457142857142bps
+Link (64,73) throughput 457142857142bps
+Link (64,121) throughput 457142857142bps
+Link (64,81) throughput 457142857142bps
+Link (121,56) throughput 457142857142bps
+Link (81,16) throughput 457142857142bps
+Link (64,113) throughput 457142857142bps
+Link (65,64) throughput 3199999999994bps
+Simulation time 14ns
+Flow #0 completed
+Flow #1 completed
+Flow #2 completed
+Flow #3 completed
+Flow #4 completed
+Flow #5 completed
+Flow #6 completed

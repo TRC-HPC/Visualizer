@@ -1,0 +1,963 @@
+{"type": "Configuration", "paths_per_flow": 1, "enable_flow_paths_logger": 0}
+Simulation time 0ns
+Flow #0 info 0x19326f0
+Flow #0 path #0 0 65 66 1
+Flow #0 transmitting
+Flow #1 info 0x192ec30
+Flow #1 path #0 1 66 67 2
+Flow #1 transmitting
+Flow #2 info 0x1932210
+Flow #2 path #0 2 67 68 3
+Flow #2 transmitting
+Flow #3 info 0x191fbb0
+Flow #3 path #0 3 68 69 4
+Flow #3 transmitting
+Flow #4 info 0x17f30b0
+Flow #4 path #0 4 69 70 5
+Flow #4 transmitting
+Flow #5 info 0x1935440
+Flow #5 path #0 5 70 71 6
+Flow #5 transmitting
+Flow #6 info 0x1919300
+Flow #6 path #0 6 71 72 7
+Flow #6 transmitting
+Flow #7 info 0x1937fc0
+Flow #7 path #0 7 72 64 73 8
+Flow #7 transmitting
+Flow #8 info 0x1938c80
+Flow #8 path #0 9 74 64 65 0
+Flow #8 transmitting
+Flow #9 info 0x1939a90
+Flow #9 path #0 8 73 74 9
+Flow #9 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (72,64) throughput 3200000000000bps
+Link (73,8) throughput 3200000000000bps
+Link (67,2) throughput 400000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (71,6) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,9) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (69,4) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (66,1) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Link (73,74) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 125ns
+Flow #8 completed
+Flow #7 completed
+Flow #10 info 0x193a290
+Flow #10 path #0 8 73 74 9
+Flow #10 transmitting
+Flow #11 info 0x1937fc0
+Flow #11 path #0 0 65 66 1
+Flow #11 transmitting
+Link (74,9) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (66,1) throughput 400000000000bps
+Link (64,65) throughput 0bps
+Link (7,72) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,8) throughput 0bps
+Link (65,0) throughput 0bps
+Link (73,74) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Simulation time 1000ns
+Flow #4 completed
+Flow #5 completed
+Flow #6 completed
+Flow #3 completed
+Flow #2 completed
+Flow #1 completed
+Flow #12 info 0x1938c80
+Flow #12 path #0 2 67 68 3
+Flow #12 transmitting
+Flow #13 info 0x192ec30
+Flow #13 path #0 3 68 69 4
+Flow #13 transmitting
+Flow #14 info 0x1932210
+Flow #14 path #0 4 69 70 5
+Flow #14 transmitting
+Flow #15 info 0x191fbb0
+Flow #15 path #0 7 72 64 73 8
+Flow #15 transmitting
+Flow #16 info 0x1919300
+Flow #16 path #0 6 71 72 7
+Flow #16 transmitting
+Flow #17 info 0x1935440
+Flow #17 path #0 5 70 71 6
+Flow #17 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (4,69) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (69,4) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (71,6) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (1,66) throughput 0bps
+Link (66,67) throughput 0bps
+Link (67,2) throughput 0bps
+Link (72,64) throughput 3200000000000bps
+Link (68,69) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 1125ns
+Flow #15 completed
+Flow #18 info 0x17f30b0
+Flow #18 path #0 8 73 74 9
+Flow #18 transmitting
+Link (74,9) throughput 399999999999bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 399999999999bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 399999999999bps
+Simulation time 1875ns
+Flow #0 completed
+Flow #19 info 0x191fbb0
+Flow #19 path #0 1 66 67 2
+Flow #19 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Simulation time 2000ns
+Flow #12 completed
+Flow #13 completed
+Flow #14 completed
+Flow #17 completed
+Flow #16 completed
+Flow #11 completed
+Flow #20 info 0x19326f0
+Flow #20 path #0 1 66 67 2
+Flow #20 transmitting
+Flow #21 info 0x1937fc0
+Flow #21 path #0 7 72 64 73 8
+Flow #21 transmitting
+Flow #22 info 0x1919300
+Flow #22 path #0 6 71 72 7
+Flow #22 transmitting
+Flow #23 info 0x1935440
+Flow #23 path #0 5 70 71 6
+Flow #23 transmitting
+Flow #24 info 0x1932210
+Flow #24 path #0 4 69 70 5
+Flow #24 transmitting
+Flow #25 info 0x192ec30
+Flow #25 path #0 3 68 69 4
+Flow #25 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (66,1) throughput 0bps
+Link (69,4) throughput 400000000000bps
+Link (65,66) throughput 0bps
+Link (3,68) throughput 400000000000bps
+Link (67,2) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (68,3) throughput 0bps
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (2,67) throughput 0bps
+Link (67,68) throughput 0bps
+Link (1,66) throughput 400000000000bps
+Link (0,65) throughput 0bps
+Link (72,64) throughput 3200000000000bps
+Link (68,69) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Simulation time 2125ns
+Flow #21 completed
+Flow #26 info 0x1938c80
+Flow #26 path #0 8 73 74 9
+Flow #26 transmitting
+Link (74,9) throughput 400000000000bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 400000000000bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 400000000000bps
+Simulation time 2292ns
+Flow #9 completed
+Flow #27 info 0x1937fc0
+Flow #27 path #0 9 74 64 65 0
+Flow #27 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 399999999999bps
+Link (8,73) throughput 399999999999bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 399999999999bps
+Simulation time 2417ns
+Flow #27 completed
+Flow #28 info 0x1939a90
+Flow #28 path #0 0 65 66 1
+Flow #28 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 2667ns
+Flow #10 completed
+Flow #29 info 0x1937fc0
+Flow #29 path #0 9 74 64 65 0
+Flow #29 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 2792ns
+Flow #29 completed
+Flow #30 info 0x193a290
+Flow #30 path #0 0 65 66 1
+Flow #30 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 3000ns
+Flow #22 completed
+Flow #23 completed
+Flow #24 completed
+Flow #25 completed
+Flow #31 info 0x1937fc0
+Flow #31 path #0 4 69 70 5
+Flow #31 transmitting
+Flow #32 info 0x192ec30
+Flow #32 path #0 5 70 71 6
+Flow #32 transmitting
+Flow #33 info 0x1932210
+Flow #33 path #0 6 71 72 7
+Flow #33 transmitting
+Flow #34 info 0x1935440
+Flow #34 path #0 7 72 64 73 8
+Flow #34 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (71,6) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (3,68) throughput 0bps
+Link (68,69) throughput 0bps
+Link (69,4) throughput 0bps
+Link (4,69) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (72,64) throughput 3200000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 3125ns
+Flow #34 completed
+Flow #35 info 0x1919300
+Flow #35 path #0 8 73 74 9
+Flow #35 transmitting
+Link (74,9) throughput 399999999999bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 399999999999bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 399999999999bps
+Simulation time 3750ns
+Flow #19 completed
+Flow #36 info 0x1935440
+Flow #36 path #0 2 67 68 3
+Flow #36 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 3875ns
+Flow #20 completed
+Flow #37 info 0x191fbb0
+Flow #37 path #0 2 67 68 3
+Flow #37 transmitting
+Link (68,3) throughput 400000000000bps
+Link (67,2) throughput 0bps
+Link (2,67) throughput 400000000000bps
+Link (1,66) throughput 0bps
+Link (66,67) throughput 0bps
+Link (67,68) throughput 400000000000bps
+Simulation time 3938ns
+Flow #18 completed
+Flow #38 info 0x19326f0
+Flow #38 path #0 9 74 64 65 0
+Flow #38 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 4000ns
+Flow #32 completed
+Flow #33 completed
+Flow #31 completed
+Flow #39 info 0x17f30b0
+Flow #39 path #0 5 70 71 6
+Flow #39 transmitting
+Flow #40 info 0x1937fc0
+Flow #40 path #0 7 72 64 73 8
+Flow #40 transmitting
+Flow #41 info 0x1932210
+Flow #41 path #0 6 71 72 7
+Flow #41 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (70,5) throughput 0bps
+Link (5,70) throughput 400000000000bps
+Link (71,6) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (69,70) throughput 0bps
+Link (6,71) throughput 400000000000bps
+Link (4,69) throughput 0bps
+Link (72,64) throughput 3200000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 4042ns
+Flow #28 completed
+Flow #42 info 0x192ec30
+Flow #42 path #0 1 66 67 2
+Flow #42 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Simulation time 4063ns
+Flow #38 completed
+Flow #43 info 0x1939a90
+Flow #43 path #0 0 65 66 1
+Flow #43 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 4125ns
+Flow #40 completed
+Flow #44 info 0x19326f0
+Flow #44 path #0 8 73 74 9
+Flow #44 transmitting
+Link (74,9) throughput 399999999999bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 399999999999bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 399999999999bps
+Simulation time 4771ns
+Flow #30 completed
+Flow #45 info 0x1937fc0
+Flow #45 path #0 1 66 67 2
+Flow #45 transmitting
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Simulation time 4844ns
+Flow #26 completed
+Flow #46 info 0x193a290
+Flow #46 path #0 9 74 64 65 0
+Flow #46 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 4969ns
+Flow #46 completed
+Flow #47 info 0x1938c80
+Flow #47 path #0 0 65 66 1
+Flow #47 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 5000ns
+Flow #39 completed
+Flow #41 completed
+Flow #48 info 0x193a290
+Flow #48 path #0 7 72 64 73 8
+Flow #48 transmitting
+Flow #49 info 0x1932210
+Flow #49 path #0 6 71 72 7
+Flow #49 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (71,6) throughput 0bps
+Link (6,71) throughput 400000000000bps
+Link (70,71) throughput 0bps
+Link (72,7) throughput 400000000000bps
+Link (5,70) throughput 0bps
+Link (72,64) throughput 3200000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 5125ns
+Flow #48 completed
+Flow #50 info 0x17f30b0
+Flow #50 path #0 8 73 74 9
+Flow #50 transmitting
+Link (74,9) throughput 399999999999bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 399999999999bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 399999999999bps
+Simulation time 5313ns
+Flow #42 completed
+Flow #51 info 0x193a290
+Flow #51 path #0 2 67 68 3
+Flow #51 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 399999999999bps
+Link (2,67) throughput 399999999999bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 399999999999bps
+Simulation time 5781ns
+Flow #36 completed
+Flow #52 info 0x192ec30
+Flow #52 path #0 3 68 69 4
+Flow #52 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 5865ns
+Flow #43 completed
+Flow #53 info 0x1935440
+Flow #53 path #0 1 66 67 2
+Flow #53 transmitting
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Simulation time 5891ns
+Flow #35 completed
+Flow #54 info 0x1939a90
+Flow #54 path #0 9 74 64 65 0
+Flow #54 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 6000ns
+Flow #49 completed
+Flow #55 info 0x1919300
+Flow #55 path #0 7 72 64 73 8
+Flow #55 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (72,7) throughput 0bps
+Link (7,72) throughput 3200000000000bps
+Link (6,71) throughput 0bps
+Link (71,72) throughput 0bps
+Link (72,64) throughput 3200000000000bps
+Simulation time 6016ns
+Flow #54 completed
+Flow #56 info 0x1932210
+Flow #56 path #0 0 65 66 1
+Flow #56 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 6031ns
+Flow #37 completed
+Flow #57 info 0x1939a90
+Flow #57 path #0 3 68 69 4
+Flow #57 transmitting
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Simulation time 6125ns
+Flow #55 completed
+Flow #58 info 0x191fbb0
+Flow #58 path #0 8 73 74 9
+Flow #58 transmitting
+Link (74,9) throughput 399999999999bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 399999999999bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 399999999999bps
+Simulation time 6219ns
+Flow #45 completed
+Flow #59 info 0x1919300
+Flow #59 path #0 2 67 68 3
+Flow #59 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 6818ns
+Flow #47 completed
+Flow #60 info 0x1937fc0
+Flow #60 path #0 1 66 67 2
+Flow #60 transmitting
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Simulation time 6868ns
+Flow #44 completed
+Flow #61 info 0x1938c80
+Flow #61 path #0 9 74 64 65 0
+Flow #61 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 6993ns
+Flow #61 completed
+Flow #62 info 0x19326f0
+Flow #62 path #0 0 65 66 1
+Flow #62 transmitting
+Link (66,1) throughput 400000000000bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 400000000000bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 400000000000bps
+Simulation time 7266ns
+Flow #53 completed
+Flow #63 info 0x1938c80
+Flow #63 path #0 2 67 68 3
+Flow #63 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 399999999999bps
+Link (2,67) throughput 399999999999bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 399999999999bps
+Simulation time 7289ns
+Flow #51 completed
+Flow #64 info 0x1935440
+Flow #64 path #0 3 68 69 4
+Flow #64 transmitting
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (69,4) throughput 399999999999bps
+Link (3,68) throughput 399999999999bps
+Link (67,68) throughput 400000000000bps
+Link (68,69) throughput 399999999999bps
+Simulation time 7628ns
+Flow #50 completed
+Flow #65 info 0x193a290
+Flow #65 path #0 9 74 64 65 0
+Flow #65 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (9,74) throughput 3200000000000bps
+Link (74,9) throughput 400000000000bps
+Link (8,73) throughput 400000000000bps
+Link (74,64) throughput 3200000000000bps
+Link (73,74) throughput 400000000000bps
+Simulation time 7652ns
+Flow #52 completed
+Flow #66 info 0x17f30b0
+Flow #66 path #0 4 69 70 5
+Flow #66 transmitting
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Simulation time 7753ns
+Flow #65 completed
+Flow #67 info 0x192ec30
+Flow #67 path #0 0 65 66 1
+Flow #67 transmitting
+Link (66,1) throughput 399999999999bps
+Link (65,0) throughput 0bps
+Link (0,65) throughput 399999999999bps
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,66) throughput 399999999999bps
+Simulation time 7885ns
+Flow #56 completed
+Flow #68 info 0x193a290
+Flow #68 path #0 1 66 67 2
+Flow #68 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Simulation time 8000ns
+Flow #58 completed
+Flow #69 info 0x1932210
+Flow #69 path #0 9 74 64 65 0
+Flow #69 transmitting
+Link (65,0) throughput 3200000000000bps
+Link (64,65) throughput 3200000000000bps
+Link (74,9) throughput 0bps
+Link (9,74) throughput 3200000000000bps
+Link (8,73) throughput 0bps
+Link (73,74) throughput 0bps
+Link (74,64) throughput 3200000000000bps
+Simulation time 8125ns
+Flow #69 completed
+Link (9,74) throughput 0bps
+Link (74,64) throughput 0bps
+Link (64,65) throughput 0bps
+Link (65,0) throughput 0bps
+Simulation time 8152ns
+Flow #57 completed
+Flow #70 info 0x1932210
+Flow #70 path #0 4 69 70 5
+Flow #70 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 8199ns
+Flow #60 completed
+Flow #71 info 0x1939a90
+Flow #71 path #0 2 67 68 3
+Flow #71 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 399999999999bps
+Link (2,67) throughput 399999999999bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 399999999999bps
+Simulation time 8241ns
+Flow #59 completed
+Flow #72 info 0x1937fc0
+Flow #72 path #0 3 68 69 4
+Flow #72 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 9037ns
+Flow #62 completed
+Flow #73 info 0x1919300
+Flow #73 path #0 1 66 67 2
+Flow #73 transmitting
+Link (66,1) throughput 400000000000bps
+Link (0,65) throughput 400000000000bps
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (65,66) throughput 400000000000bps
+Link (66,67) throughput 400000000000bps
+Simulation time 9047ns
+Flow #68 completed
+Flow #74 info 0x19326f0
+Flow #74 path #0 2 67 68 3
+Flow #74 transmitting
+Link (67,2) throughput 400000000000bps
+Link (1,66) throughput 400000000000bps
+Link (68,3) throughput 399999999999bps
+Link (2,67) throughput 399999999999bps
+Link (66,67) throughput 400000000000bps
+Link (67,68) throughput 399999999999bps
+Simulation time 9152ns
+Flow #66 completed
+Flow #75 info 0x193a290
+Flow #75 path #0 5 70 71 6
+Flow #75 transmitting
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 9321ns
+Flow #64 completed
+Flow #76 info 0x17f30b0
+Flow #76 path #0 4 69 70 5
+Flow #76 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 9408ns
+Flow #63 completed
+Flow #77 info 0x1935440
+Flow #77 path #0 3 68 69 4
+Flow #77 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Simulation time 9417ns
+Flow #67 completed
+Link (0,65) throughput 0bps
+Link (65,66) throughput 0bps
+Link (66,1) throughput 0bps
+Simulation time 9983ns
+Flow #70 completed
+Flow #78 info 0x192ec30
+Flow #78 path #0 5 70 71 6
+Flow #78 transmitting
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Simulation time 10042ns
+Flow #73 completed
+Link (1,66) throughput 0bps
+Link (66,67) throughput 0bps
+Link (67,2) throughput 0bps
+Simulation time 10154ns
+Flow #72 completed
+Flow #79 info 0x1919300
+Flow #79 path #0 4 69 70 5
+Flow #79 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 10321ns
+Flow #75 completed
+Flow #80 info 0x1937fc0
+Flow #80 path #0 6 71 72 7
+Flow #80 transmitting
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 10333ns
+Flow #71 completed
+Flow #81 info 0x193a290
+Flow #81 path #0 3 68 69 4
+Flow #81 transmitting
+Link (68,3) throughput 400000000000bps
+Link (2,67) throughput 400000000000bps
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (67,68) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Simulation time 10750ns
+Flow #74 completed
+Link (2,67) throughput 0bps
+Link (67,68) throughput 0bps
+Link (68,3) throughput 0bps
+Simulation time 11150ns
+Flow #76 completed
+Flow #82 info 0x19326f0
+Flow #82 path #0 5 70 71 6
+Flow #82 transmitting
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Simulation time 11154ns
+Flow #78 completed
+Flow #83 info 0x17f30b0
+Flow #83 path #0 6 71 72 7
+Flow #83 transmitting
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 11229ns
+Flow #77 completed
+Flow #84 info 0x192ec30
+Flow #84 path #0 4 69 70 5
+Flow #84 transmitting
+Link (69,4) throughput 400000000000bps
+Link (3,68) throughput 400000000000bps
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (68,69) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Simulation time 11488ns
+Flow #80 completed
+Flow #85 info 0x193e130
+Flow #85 path #0 7 72 64 73 8
+Flow #85 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (72,7) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (72,64) throughput 3200000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 11613ns
+Flow #85 completed
+Flow #86 info 0x1937fc0
+Flow #86 path #0 8 73 74 9
+Flow #86 transmitting
+Link (74,9) throughput 400000000000bps
+Link (7,72) throughput 0bps
+Link (8,73) throughput 400000000000bps
+Link (73,8) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,74) throughput 400000000000bps
+Simulation time 11781ns
+Flow #81 completed
+Link (3,68) throughput 0bps
+Link (68,69) throughput 0bps
+Link (69,4) throughput 0bps
+Simulation time 12075ns
+Flow #79 completed
+Flow #87 info 0x193e130
+Flow #87 path #0 5 70 71 6
+Flow #87 transmitting
+Link (70,5) throughput 400000000000bps
+Link (4,69) throughput 400000000000bps
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (69,70) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Simulation time 12229ns
+Flow #82 completed
+Flow #88 info 0x1919300
+Flow #88 path #0 6 71 72 7
+Flow #88 transmitting
+Link (71,6) throughput 400000000000bps
+Link (5,70) throughput 400000000000bps
+Link (72,7) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (70,71) throughput 400000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 12413ns
+Flow #83 completed
+Flow #89 info 0x193e190
+Flow #89 path #0 7 72 64 73 8
+Flow #89 transmitting
+Link (73,8) throughput 3200000000000bps
+Link (64,73) throughput 3200000000000bps
+Link (7,72) throughput 3200000000000bps
+Link (72,7) throughput 400000000000bps
+Link (6,71) throughput 400000000000bps
+Link (72,64) throughput 3200000000000bps
+Link (71,72) throughput 400000000000bps
+Simulation time 12538ns
+Flow #89 completed
+Link (7,72) throughput 0bps
+Link (72,64) throughput 0bps
+Link (64,73) throughput 0bps
+Link (73,8) throughput 0bps
+Simulation time 12613ns
+Flow #86 completed
+Link (8,73) throughput 0bps
+Link (73,74) throughput 0bps
+Link (74,9) throughput 0bps
+Simulation time 12652ns
+Flow #84 completed
+Link (4,69) throughput 0bps
+Link (69,70) throughput 0bps
+Link (70,5) throughput 0bps
+Simulation time 13152ns
+Flow #87 completed
+Link (5,70) throughput 0bps
+Link (70,71) throughput 0bps
+Link (71,6) throughput 0bps
+Simulation time 13321ns
+Flow #88 completed
