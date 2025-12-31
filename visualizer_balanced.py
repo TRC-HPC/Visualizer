@@ -32,6 +32,7 @@ from flask import request, jsonify
 from dash.exceptions import PreventUpdate
 import dash
 import json, os, base64, math
+import re
 from string import Template
 import numpy as np
 import pandas as pd
@@ -69,11 +70,13 @@ class DataVar:
     One data/node variable (chunks + sends) parsed from a Varname block.
     This encapsulates what JsonVisualizer.__init__ used to do for a single data var.
     """
-    def __init__(self, name: str, block: dict):
+    def __init__(self, name: str, block: dict, node_map=None):
         # Init.
         self.name = name
         self.block = block
         self.vartype = (block.get("Vartype") or "").lower()
+        self.node_map = node_map or {}
+        _map_node = lambda n: int(self.node_map.get(int(n), int(n)))
 
         values = list(block.get("Values") or [])
         varcount = block.get("Varcount")
@@ -95,12 +98,20 @@ class DataVar:
                 # Iterate over the relevant items and accumulate results.
                 try:
                     node = int(k)
+                    node = _map_node(node)
+                    node = _map_node(node)
+                    node = _map_node(node)
                 except Exception:
                     # Recover from a failure case and return a safe default.
                     continue
                 if isinstance(v, list):
                     # Branch based on the current state / selection.
-                    start_map[node] = [int(x) for x in v]
+                    chunks_list = [int(x) for x in v]
+                    if node in start_map:
+                        # merge if multiple original ids collapse into same canonical node
+                        start_map[node] = sorted(set(start_map[node] + chunks_list))
+                    else:
+                        start_map[node] = chunks_list
         # Variant A: flags per node (0/1), seed *all* chunks when value==1
         if isinstance(starting_pos, dict) and starting_pos:
             # fallback varcount from data_id maxima if not present
@@ -226,6 +237,11 @@ class DataVar:
                 try:
                     link_src = int(eid[0])
                     link_dst = int(eid[1])
+
+                    link_src = _map_node(link_src)
+                    link_dst = _map_node(link_dst)
+                    if link_src == link_dst:
+                        continue
                 except Exception:
                     # Recover from a failure case and return a safe default.
                     continue
@@ -254,6 +270,7 @@ class DataVar:
             # ---------- NODE-LEVEL EVENTS (entity_id is a node id) ----------
             try:
                 dst = int(eid)
+                dst = _map_node(dst)
             except Exception:
                 # Recover from a failure case and return a safe default.
                 continue
@@ -263,6 +280,11 @@ class DataVar:
                 # Validate inputs / state before continuing.
                 try:
                     src = int(src_field)
+                    src = _map_node(src)
+
+                    # Ignore internal traffic within a collapsed node↔switch component.
+                    if src == dst:
+                        continue
                 except Exception:
                     # Recover from a failure case and return a safe default.
                     src = None
@@ -457,11 +479,12 @@ class LinkVar:
     One link_var (Vartype='link'): generic numeric value on links vs time.
     We keep per-link step-series so we can color edges later.
     """
-    def __init__(self, name: str, block: dict):
+    def __init__(self, name: str, block: dict, node_map=None):
         # Init.
         self.name = name
         self.block = block
         self.vartype = (block.get("Vartype") or "").lower()
+        self.node_map = node_map or {}
 
         raw_values = list(block.get("Values") or [])
         events = []
@@ -479,6 +502,12 @@ class LinkVar:
                     continue
                 src = int(link[0])
                 dst = int(link[1])
+
+                # Canonicalize node ids (collapse latency==0 node↔switch wiring).
+                src = int(self.node_map.get(src, src))
+                dst = int(self.node_map.get(dst, dst))
+                if src == dst:
+                    continue
 
                 # generic numeric value: prefer "value", then "flow", then "val"
                 value = ev.get("value")
@@ -533,6 +562,20 @@ class JsonVisualizer:
             # Open the file and ensure it is closed correctly.
             root = json.load(f)
 
+        # Node-id canonicalization map (collapse latency==0 node↔switch wiring) from topology.
+        # This is populated when a topology is loaded; if a log is loaded before topology,
+        # we fall back to identity mapping.
+        self.node_map = {}
+        try:
+            topo_candidate = topo_path or globals().get("TOPO_FILE", "") or ""
+            if topo_candidate:
+                abs_topo = os.path.abspath(topo_candidate)
+                topo_maps = globals().get("TOPO_NODE_MAP_BY_PATH", {}) or {}
+                if abs_topo in topo_maps:
+                    self.node_map = dict(topo_maps.get(abs_topo) or {})
+        except Exception:
+            self.node_map = {}
+
         # -------- 1) Scan for all Varname blocks --------
         data_blocks = []   # list[(name, dict)] for Vartype in {data,node}
         link_blocks = []   # list[(name, dict)] for Vartype == link
@@ -569,11 +612,11 @@ class JsonVisualizer:
 
         # -------- 2) Create DataVar and LinkVar instances --------
         self.data_vars = [
-            DataVar(name or f"data_var_{i}", block)
+            DataVar(name or f"data_var_{i}", block, node_map=self.node_map)
             for i, (name, block) in enumerate(data_blocks)
         ]
         self.link_vars = [
-            LinkVar(name or f"link_var_{i}", block)
+            LinkVar(name or f"link_var_{i}", block, node_map=self.node_map)
             for i, (name, block) in enumerate(link_blocks)
         ]
 
@@ -626,6 +669,10 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 TOPO_FILE = ""
+
+# Topology node canonicalization (latency==0 unions) per topology file.
+TOPO_NODE_MAP_BY_PATH = {}  # abs_topo_path -> {orig_node_id:int -> canonical_node_id:int}
+TOPO_MERGE_INFO_BY_PATH = {}  # abs_topo_path -> {'canon_to_members': {canon:[members]}, 'switch_ids': set(int)}
 LOG_FILE = os.path.join(BASE_DIR, ".json")
 PRESET_FILE = os.path.join(BASE_DIR, "saved_layout.json")  # positions-only
 SESSION_FILE = os.path.join(BASE_DIR, "saved_session.json")  # full session
@@ -735,6 +782,61 @@ def _ud_edge_key(a, b) -> str:
         sb = str(b)
         return f"{sa}-{sb}" if sa <= sb else f"{sb}-{sa}"
 
+def parse_capacity_to_bps(val):
+    """Parse ns-3 style rate strings into *bits per second* (float).
+
+    Examples:
+      - "10000.0Gbps" -> 10000 * 1e9
+      - "1000000.0bps" -> 1_000_000
+      - "125MBps" -> 125 * 1e6 * 8
+    If parsing fails, falls back to float(val) if possible, else 0.0.
+    """
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        try:
+            return float(val)
+        except Exception:
+            return 0.0
+
+    s = str(val).strip()
+    if not s:
+        return 0.0
+
+    s2 = s.replace(" ", "")
+    # Match: number + optional SI prefix + (b|B)ps
+    m = re.match(r"^([+-]?\d+(?:\.\d+)?)([kKmMgGtT]?)([bB])ps$", s2)
+    if m:
+        num = float(m.group(1))
+        prefix = m.group(2).lower()
+        bb = m.group(3)  # 'b' bits, 'B' bytes
+        scale = {"": 1.0, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12}.get(prefix, 1.0)
+        bps = num * scale
+        if bb == "B":
+            bps *= 8.0
+        return float(bps)
+
+    # Sometimes ns-3 prints "Gbps" etc without a clear delimiter; try a looser match.
+    m = re.match(r"^([+-]?\d+(?:\.\d+)?)([kKmMgGtT]?)([bB])ps.*$", s2)
+    if m:
+        num = float(m.group(1))
+        prefix = m.group(2).lower()
+        bb = m.group(3)
+        scale = {"": 1.0, "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12}.get(prefix, 1.0)
+        bps = num * scale
+        if bb == "B":
+            bps *= 8.0
+        return float(bps)
+
+    # Fallback: strip letters and parse float
+    try:
+        stripped = re.sub(r"[^0-9eE+\-\.]+", "", s)
+        return float(stripped)
+    except Exception:
+        return 0.0
+
+
+
 
 def parse_topology(filename):
     # Load and parse log data, then update the derived metrics used by plots and filters.
@@ -815,7 +917,7 @@ def parse_topology(filename):
         if len(parts) >= 5 and "PDR" in parts:
              # Branch based on the current state / selection.
              src, dst = parts[0], parts[1]
-             row_params["capacity"] = clean_val(parts[2])
+             row_params["capacity"] = parse_capacity_to_bps(parts[2])
              row_params["latency"] = clean_val(parts[3])
         
         # --- Existing Heuristics (modified to use clean_val) ---
@@ -823,14 +925,14 @@ def parse_topology(filename):
         elif len(parts) == 4:
             # Alternative branch for a different condition.
             src, dst = parts[0], parts[1]
-            row_params["capacity"] = clean_val(parts[2])
+            row_params["capacity"] = parse_capacity_to_bps(parts[2])
             row_params["latency"] = clean_val(parts[3])
 
         # Heuristic for 6-column "src ? dst ? cap lat"
         elif len(parts) >= 6:
             # Alternative branch for a different condition.
             src, dst = parts[0], parts[2]
-            row_params["capacity"] = clean_val(parts[4])
+            row_params["capacity"] = parse_capacity_to_bps(parts[4])
             row_params["latency"] = clean_val(parts[5])
             for k, val in enumerate(parts[6:], start=6):
                 # Iterate over the relevant items and accumulate results.
@@ -842,7 +944,10 @@ def parse_topology(filename):
             for k, val in enumerate(parts[2:], start=2):
                 # Iterate over the relevant items and accumulate results.
                 key = "capacity" if k==2 else "latency" if k==3 else f"param_{k}"
-                row_params[key] = clean_val(val)
+                if key == "capacity":
+                    row_params[key] = parse_capacity_to_bps(val)
+                else:
+                    row_params[key] = clean_val(val)
 
         # Default fills
         if "capacity" not in row_params: row_params["capacity"] = 1.0
@@ -866,6 +971,154 @@ def parse_topology(filename):
         G.add_edge(src_i, dst_i, **row_params)
         
         edges.append((src_i, dst_i, row_params))
+
+    
+
+    # ----------------------------
+    # Canonicalize node/switch pairs connected by latency==0 links.
+    # Treat such links as "fake" node↔switch wiring: collapse endpoints into one entity.
+    # Canonical node id is min(component), and internal edges are removed.
+    # ----------------------------
+    try:
+        abs_path = os.path.abspath(filename)
+    except Exception:
+        abs_path = str(filename)
+
+    # DSU / Union-Find over node ids [0..num_nodes-1]
+    parent = list(range(int(num_nodes)))
+    rank = [0] * int(num_nodes)
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a: int, b: int) -> None:
+        ra = _find(a)
+        rb = _find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            parent[ra] = rb
+        elif rank[ra] > rank[rb]:
+            parent[rb] = ra
+        else:
+            parent[rb] = ra
+            rank[ra] += 1
+
+    # Union all latency==0 edges
+    for (u, v, params) in list(edges):
+        try:
+            lat = float(params.get("latency", 0.0) or 0.0)
+        except Exception:
+            lat = 0.0
+        if lat == 0.0:
+            try:
+                _union(int(u), int(v))
+            except Exception:
+                pass
+
+    # Build components and canonical ids
+    comps = {}
+    for n in range(int(num_nodes)):
+        r = _find(n)
+        comps.setdefault(r, []).append(n)
+
+    canon_by_root = {r: min(members) for r, members in comps.items()}
+    node_map = {n: canon_by_root[_find(n)] for n in range(int(num_nodes))}
+
+    # Determine which canonical nodes remain "switches":
+    # only components containing exclusively original switches remain switches.
+    new_switch_ids = set()
+    canon_to_members = {}
+    for r, members in comps.items():
+        canon = canon_by_root[r]
+        canon_to_members[canon] = list(members)
+        if all(m in switch_ids for m in members):
+            new_switch_ids.add(canon)
+
+    # Rebuild graph and edge list with canonical nodes, dropping internal edges
+    new_G = nx.Graph()
+    for canon in set(node_map.values()):
+        new_G.add_node(int(canon))
+
+    edge_acc = {}  # ud_key -> params + endpoints
+    for (u, v, params) in list(edges):
+        try:
+            uu = int(node_map.get(int(u), int(u)))
+            vv = int(node_map.get(int(v), int(v)))
+        except Exception:
+            continue
+        if uu == vv:
+            # internal (including latency==0 wiring); remove it
+            continue
+
+        lo, hi = (uu, vv) if uu <= vv else (vv, uu)
+        k = _ud_edge_key(lo, hi)
+
+        # Copy and normalize params
+        p = dict(params or {})
+        try:
+            p["capacity"] = float(p.get("capacity", 0.0) or 0.0)
+        except Exception:
+            p["capacity"] = 0.0
+        try:
+            p["latency"] = float(p.get("latency", 0.0) or 0.0)
+        except Exception:
+            p["latency"] = 0.0
+
+        if k not in edge_acc:
+            edge_acc[k] = {"src": lo, "dst": hi, "params": p}
+        else:
+            cur = edge_acc[k]["params"]
+            # Combine parallel edges caused by collapsing:
+            # capacity: sum; latency: min; other numeric params: sum
+            try:
+                cur["capacity"] = float(cur.get("capacity", 0.0) or 0.0) + float(p.get("capacity", 0.0) or 0.0)
+            except Exception:
+                pass
+            try:
+                cur["latency"] = min(float(cur.get("latency", 0.0) or 0.0), float(p.get("latency", 0.0) or 0.0))
+            except Exception:
+                pass
+            for kk, vv2 in p.items():
+                if kk in ("capacity", "latency"):
+                    continue
+                if isinstance(vv2, (int, float)):
+                    cur[kk] = float(cur.get(kk, 0.0) or 0.0) + float(vv2)
+
+    new_edges = []
+    new_param_ranges = {}
+    for rec in edge_acc.values():
+        u = int(rec["src"])
+        v = int(rec["dst"])
+        p = rec["params"]
+        new_G.add_edge(u, v, **p)
+        new_edges.append((u, v, p))
+
+        for kk, vv2 in p.items():
+            if isinstance(vv2, (int, float)):
+                if kk not in new_param_ranges:
+                    new_param_ranges[kk] = [vv2, vv2]
+                else:
+                    new_param_ranges[kk][0] = min(new_param_ranges[kk][0], vv2)
+                    new_param_ranges[kk][1] = max(new_param_ranges[kk][1], vv2)
+
+    # Publish mapping for this topology path so log parsing can canonicalize ids consistently.
+    try:
+        TOPO_NODE_MAP_BY_PATH[abs_path] = node_map
+        TOPO_MERGE_INFO_BY_PATH[abs_path] = {"canon_to_members": canon_to_members, "switch_ids": set(new_switch_ids)}
+    except Exception:
+        pass
+
+    # Replace outputs with canonicalized topology
+    G = new_G
+    edges = new_edges
+    switch_ids = new_switch_ids
+    param_ranges = new_param_ranges
+    # Keep original numeric range for nodes (IDs remain stable), but layout uses actual nodes in G.
+    num_nodes = int(num_nodes)
 
     return G, num_nodes, switch_ids, edges, param_ranges
     
@@ -933,7 +1186,7 @@ def generate_preset_layout(G, switch_ids):
     # -------------------------
     LEVEL_HEIGHT = 225
 
-    NODE_ARC = 45          # Controls clique circle radius: larger -> bigger circles
+    NODE_ARC = 50          # Controls clique circle radius: larger -> bigger circles
     MIN_GROUP_RADIUS = 5
 
     # Tighten host row so the first switch layer doesn't spread out too much.
@@ -1646,6 +1899,41 @@ def panel_param_filters():
                     style={"marginTop": "10px"}
                 ),
                 html.Div(id="pf-chunk-filter-status", style=LABEL_MUTED | {"marginTop": "10px"}),
+
+                html.Hr(style={"margin": "14px 0"}),
+
+                # Segment chunk presence filter: show only nodes/links that carried a specific chunk
+                html.Div("Chunk Presence Filter (segment)", style={"fontWeight": 700, "marginBottom": "6px"}),
+                html.Div(
+                    "Show only nodes and links that carried the selected chunk within the current time window.",
+                    style=LABEL_MUTED
+                ),
+                dcc.Input(
+                    id="pf-trace-chunk-id",
+                    type="number",
+                    placeholder="chunk id",
+                    min=0,
+                    step=1,
+                    debounce=True,
+                    style={"width": "140px", "marginTop": "6px"},
+                ),
+                html.Div(
+                    [
+                        html.Button(
+                            "Apply Chunk Presence Filter",
+                            id="pf-apply-trace-filter",
+                            n_clicks=0,
+                            style={"marginRight": "8px"}
+                        ),
+                        html.Button(
+                            "Clear",
+                            id="pf-clear-trace-filter",
+                            n_clicks=0
+                        ),
+                    ],
+                    style={"marginTop": "8px"},
+                ),
+                html.Div(id="pf-trace-filter-status", style=LABEL_MUTED | {"marginTop": "10px"}),
             ]
         ),
 
@@ -1883,66 +2171,530 @@ def _compute_chunk_start_times():
     return out
 
 
-def _series_wip_from_intervals(df, bins=300):
-    """Active sends at time t: (# starts <= t) - (# ends <= t)."""
-    # Series wip from intervals.
-    if df.empty:
-        # Branch based on the current state / selection.
-        return [], []
-    t0 = float(df["t_start"].min()); t1 = float(df["t_end"].max())
-    if t1 <= t0: t1 = t0 + 1.0
-    t = np.linspace(t0, t1, bins, dtype=float)
-    s = np.sort(df["t_start"].to_numpy(dtype=float))
-    e = np.sort(df["t_end"].to_numpy(dtype=float))
-    wip = np.searchsorted(s, t, side="right") - np.searchsorted(e, t, side="right")
-    return t, wip
+def _count_path_components_for_edges(edges):
+    """Count 'active send-paths' inside a single chunk's active hop-set.
 
+    We treat each active hop (src→dst) as an edge in a *directed* multihop transfer graph.
+    Two hops belong to the same end-to-end in-flight send-path if they connect head-to-tail:
+        (a→b) is connected to (b→c) (handoff at b)
+
+    Implementation detail:
+      - Build components over the *hop instances* using a union-find.
+      - Union all hops that either end at a node AND start at that same node (handoff node).
+      - Hops that only share a source (fan-out) or only share a destination (fan-in) are NOT merged.
+    """
+    edges = list(edges or [])
+    if not edges:
+        return 0
+
+    n = len(edges)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(a, b):
+        ra = find(a)
+        rb = find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    start_at = {}
+    end_at = {}
+    for i, (u, v) in enumerate(edges):
+        start_at.setdefault(u, []).append(i)
+        end_at.setdefault(v, []).append(i)
+
+    # For every handoff node x: union( hops ending at x, hops starting at x )
+    for x in (set(start_at.keys()) & set(end_at.keys())):
+        idxs = end_at.get(x, []) + start_at.get(x, [])
+        if len(idxs) <= 1:
+            continue
+        first = idxs[0]
+        for j in idxs[1:]:
+            union(first, j)
+
+    roots = set(find(i) for i in range(n))
+    return len(roots)
+
+
+def _wip_paths_at_times(df, t_grid, start_col="t_start", end_col="t_end",
+                        chunk_col="chunk", src_col="src", dst_col="dst"):
+    """Return WIP as 'number of active send-paths' evaluated at specific times.
+
+    A send-hop is active at time t if: start <= t < end.
+    Multiple simultaneously-active hops for the *same chunk* may represent a single pipelined
+    end-to-end transfer; we deduplicate hops into 'paths' using _count_path_components_for_edges().
+
+    Returns: np.ndarray of shape (len(t_grid),), float.
+    """
+    if df is None or df.empty:
+        return np.full(len(t_grid), np.nan, dtype=float)
+
+    # Ensure numpy float grid.
+    tg = np.asarray(t_grid, dtype=float)
+    if tg.size == 0:
+        return np.asarray([], dtype=float)
+
+    # Work in sorted time order, then unsort back.
+    order_t = np.argsort(tg, kind="mergesort")
+    tg_sorted = tg[order_t]
+
+    s = pd.to_numeric(df.get(start_col), errors="coerce").to_numpy(dtype=float)
+    e = pd.to_numeric(df.get(end_col), errors="coerce").to_numpy(dtype=float)
+    c = pd.to_numeric(df.get(chunk_col), errors="coerce").to_numpy(dtype=float)
+
+    src = pd.to_numeric(df.get(src_col), errors="coerce").to_numpy(dtype=float)
+    dst = pd.to_numeric(df.get(dst_col), errors="coerce").to_numpy(dtype=float)
+
+    m = np.isfinite(s) & np.isfinite(e) & np.isfinite(c) & np.isfinite(src) & np.isfinite(dst)
+    if m.sum() == 0:
+        return np.full(len(t_grid), np.nan, dtype=float)
+
+    s = s[m]; e = e[m]
+    c = c[m].astype(int)
+    src = src[m].astype(int)
+    dst = dst[m].astype(int)
+
+    # Build events: end first at same timestamp to respect [start, end) activity.
+    # kind: 0=end, 1=start
+    events = []
+    for i in range(len(s)):
+        st = float(s[i]); en = float(e[i])
+        if not np.isfinite(st) or not np.isfinite(en):
+            continue
+        if en < st:
+            st, en = en, st
+        ch = int(c[i])
+        u = int(src[i]); v = int(dst[i])
+        if u < 0 or v < 0:
+            continue
+        events.append((en, 0, ch, u, v))
+        events.append((st, 1, ch, u, v))
+
+    if not events:
+        return np.full(len(t_grid), np.nan, dtype=float)
+
+    events.sort(key=lambda x: (x[0], x[1]))
+
+    # Active state per chunk.
+    active_counts = {}  # chunk -> {(u,v):count}
+    chunk_paths = {}    # chunk -> int (path components count)
+    wip_total = 0.0
+
+    out = np.zeros_like(tg_sorted, dtype=float)
+
+    j = 0
+    L = len(events)
+
+    def recompute_for_chunk(ch):
+        nonlocal wip_total
+        old = float(chunk_paths.get(ch, 0.0))
+        if old:
+            wip_total -= old
+
+        ec = active_counts.get(ch)
+        if not ec:
+            chunk_paths.pop(ch, None)
+            active_counts.pop(ch, None)
+            return
+
+        edges = list(ec.keys())
+        new = float(_count_path_components_for_edges(edges))
+        if new <= 0:
+            chunk_paths.pop(ch, None)
+            active_counts.pop(ch, None)
+        else:
+            chunk_paths[ch] = new
+            wip_total += new
+
+    # Sweep over requested times; apply all events with time <= t (ends before starts at same time).
+    for i, t in enumerate(tg_sorted):
+        # Apply all events up to this time.
+        while j < L and float(events[j][0]) <= float(t):
+            t_ev = float(events[j][0])
+
+            # Batch all events at this exact timestamp.
+            mods = {}  # ch -> {"add":[], "rem":[]}
+            while j < L and float(events[j][0]) == t_ev:
+                _tt, kind, ch, u, v = events[j]
+                mm = mods.setdefault(ch, {"add": [], "rem": []})
+                if kind == 0:
+                    mm["rem"].append((u, v))
+                else:
+                    mm["add"].append((u, v))
+                j += 1
+
+            for ch, mm in mods.items():
+                ec = active_counts.get(ch)
+                if ec is None:
+                    ec = {}
+                    active_counts[ch] = ec
+
+                # Apply removals first.
+                for (u, v) in mm["rem"]:
+                    k = (u, v)
+                    if k in ec:
+                        ec[k] -= 1
+                        if ec[k] <= 0:
+                            ec.pop(k, None)
+
+                # Apply adds.
+                for (u, v) in mm["add"]:
+                    k = (u, v)
+                    ec[k] = ec.get(k, 0) + 1
+
+                # Recompute this chunk's path contribution once.
+                recompute_for_chunk(ch)
+
+        # WIP is defined as the number of active end-to-end "send paths" (after per-chunk hop merging).
+        # Do not apply any post-hoc scaling here; if the upstream event model is correct this value is correct.
+        out[i] = float(wip_total)
+
+    # Unsort back to original t_grid order.
+    out_unsorted = np.empty_like(out)
+    out_unsorted[order_t] = out
+    return out_unsorted
+
+
+def _series_wip_from_intervals(df, bins=300):
+    """Active sends at time t, deduplicated into end-to-end pipelined 'send paths' (step series).
+
+    If we have {t_start,t_end,chunk,src,dst} we compute *paths*:
+      - for each chunk, all simultaneously-active hops are merged into a single path whenever
+        they connect head-to-tail (handoff node).
+      - total WIP = sum over chunks of (# active paths)
+
+    Fallback: if metadata is missing, use classic (#starts - #ends).
+    """
+    if df is None or df.empty:
+        return [], []
+
+    have_cols = all(c in df.columns for c in ("t_start", "t_end", "src", "dst")) and any(
+        c in df.columns for c in ("chunk", "chunk_id", "cid", "data_id")
+    )
+    if not have_cols:
+        # ---- fallback: classic interval WIP ----
+        s = pd.to_numeric(df.get("t_start"), errors="coerce").to_numpy(dtype=float)
+        e = pd.to_numeric(df.get("t_end"), errors="coerce").to_numpy(dtype=float)
+        mask = np.isfinite(s) & np.isfinite(e)
+        s = s[mask]; e = e[mask]
+        if s.size == 0 or e.size == 0:
+            return [], []
+        t0 = float(np.min(s)); t1 = float(np.max(e))
+        if t1 <= t0:
+            t1 = t0 + 1.0
+        times = np.concatenate([s, e]).astype(float)
+        deltas = np.concatenate([np.ones_like(s, dtype=float), -np.ones_like(e, dtype=float)])
+        order = np.argsort(times, kind="mergesort")
+        times = times[order]
+        deltas = deltas[order]
+        uniq_t, idx0 = np.unique(times, return_index=True)
+        delta_sum = np.add.reduceat(deltas, idx0)
+
+        w = 0.0
+        t_out = []
+        y_out = []
+        for t, d in zip(uniq_t, delta_sum):
+            t = float(t)
+            t_out.append(t); y_out.append(w)
+            w += float(d)
+            t_out.append(t); y_out.append(w)
+
+        if t_out and t_out[-1] != float(t1):
+            t_out.append(float(t1))
+            y_out.append(float(w))
+
+        return np.asarray(t_out, dtype=float), np.asarray(y_out, dtype=float)
+
+    # ---- path-aware step series ----
+    chunk_col = None
+    for cc in ("chunk", "chunk_id", "cid", "data_id"):
+        if cc in df.columns:
+            chunk_col = cc
+            break
+
+    s = pd.to_numeric(df.get("t_start"), errors="coerce").to_numpy(dtype=float)
+    e = pd.to_numeric(df.get("t_end"), errors="coerce").to_numpy(dtype=float)
+    c = pd.to_numeric(df.get(chunk_col), errors="coerce").to_numpy(dtype=float)
+    src = pd.to_numeric(df.get("src"), errors="coerce").to_numpy(dtype=float)
+    dst = pd.to_numeric(df.get("dst"), errors="coerce").to_numpy(dtype=float)
+
+    m = np.isfinite(s) & np.isfinite(e) & np.isfinite(c) & np.isfinite(src) & np.isfinite(dst)
+    s = s[m]; e = e[m]
+    c = c[m].astype(int)
+    src = src[m].astype(int)
+    dst = dst[m].astype(int)
+
+    if s.size == 0:
+        return [], []
+
+    # Build events; end events processed before start events at same timestamp.
+    events = []
+    for i in range(len(s)):
+        st = float(s[i]); en = float(e[i])
+        if en < st:
+            st, en = en, st
+        ch = int(c[i]); u = int(src[i]); v = int(dst[i])
+        if u < 0 or v < 0:
+            continue
+        events.append((en, 0, ch, u, v))
+        events.append((st, 1, ch, u, v))
+
+    if not events:
+        return [], []
+
+    events.sort(key=lambda x: (x[0], x[1]))
+    uniq_times = []
+    # Collect unique timestamps (in order) for step points.
+    last_t = None
+    for tt, _k, _ch, _u, _v in events:
+        if last_t is None or float(tt) != float(last_t):
+            uniq_times.append(float(tt))
+            last_t = float(tt)
+
+    # Active state
+    active_counts = {}
+    chunk_paths = {}
+    wip_total = 0.0
+
+    def recompute_for_chunk(ch):
+        nonlocal wip_total
+        old = float(chunk_paths.get(ch, 0.0))
+        if old:
+            wip_total -= old
+
+        ec = active_counts.get(ch)
+        if not ec:
+            chunk_paths.pop(ch, None)
+            active_counts.pop(ch, None)
+            return
+
+        new = float(_count_path_components_for_edges(list(ec.keys())))
+        if new <= 0:
+            chunk_paths.pop(ch, None)
+            active_counts.pop(ch, None)
+        else:
+            chunk_paths[ch] = new
+            wip_total += new
+
+    t_out = []
+    y_out = []
+    j = 0
+    L = len(events)
+
+    for tt in uniq_times:
+        # value just before applying all events at tt
+        t_out.append(float(tt)); y_out.append(float(wip_total))
+
+        # batch all events at tt
+        mods = {}
+        while j < L and float(events[j][0]) == float(tt):
+            _t, kind, ch, u, v = events[j]
+            mm = mods.setdefault(ch, {"add": [], "rem": []})
+            if kind == 0:
+                mm["rem"].append((u, v))
+            else:
+                mm["add"].append((u, v))
+            j += 1
+
+        for ch, mm in mods.items():
+            ec = active_counts.get(ch)
+            if ec is None:
+                ec = {}
+                active_counts[ch] = ec
+
+            for (u, v) in mm["rem"]:
+                k = (u, v)
+                if k in ec:
+                    ec[k] -= 1
+                    if ec[k] <= 0:
+                        ec.pop(k, None)
+
+            for (u, v) in mm["add"]:
+                k = (u, v)
+                ec[k] = ec.get(k, 0) + 1
+
+            recompute_for_chunk(ch)
+
+        # value just after events at tt
+        t_out.append(float(tt)); y_out.append(float(wip_total))
+
+    # Flat tail to the last observed time
+    if t_out:
+        t_last = float(max(uniq_times))
+        if t_out[-1] != t_last:
+            t_out.append(t_last); y_out.append(float(wip_total))
+
+    return np.asarray(t_out, dtype=float), np.asarray(y_out, dtype=float)
 
 def _series_cum_finished(fin_map, bins=300):
-    # Series cum finished.
+    """Cumulative finished chunks over time, event-driven (step)."""
     if not fin_map:
-        # Validate inputs / state before continuing.
         return [], []
-    ft = np.array([float(v) for v in fin_map.values()], dtype=float)
-    t0, t1 = float(np.min(ft)), float(np.max(ft))
-    if t1 <= t0: t1 = t0 + 1.0
-    edges = np.linspace(t0, t1, bins + 1)
-    counts = np.histogram(ft, bins=edges)[0]
-    cum = np.cumsum(counts)
-    centers = (edges[:-1] + edges[1:]) / 2.0
-    return centers, cum-1
+
+    ft = np.array([float(v) for v in fin_map.values() if v is not None], dtype=float)
+    ft = ft[np.isfinite(ft)]
+    if ft.size == 0:
+        return [], []
+
+    ft.sort()
+    uniq_t, counts = np.unique(ft, return_counts=True)
+
+    c = 0.0
+    t_out = []
+    y_out = []
+    for t, k in zip(uniq_t, counts):
+        t = float(t)
+        t_out.append(t); y_out.append(c)
+        c += float(k)
+        t_out.append(t); y_out.append(c)
+
+    # Extend to last timestamp for a flat tail (Plotly will keep the last value).
+    return np.asarray(t_out, dtype=float), np.asarray(y_out, dtype=float)
+
+def _avg_send_duration_cum_at_times(df, t_grid, start_col="t_start", end_col="t_end"):
+    """Cumulative average duration of sends that ended by time t.
+
+    For each evaluation time t:
+      avg(t) = mean( (end-start) for sends with end <= t )
+
+    If no sends have ended yet at time t, the output is NaN.
+    """
+    if df is None or df.empty:
+        return np.full(len(t_grid), np.nan, dtype=float)
+
+    tg = np.asarray(t_grid, dtype=float)
+    if tg.size == 0:
+        return np.asarray([], dtype=float)
+
+    s = pd.to_numeric(df.get(start_col), errors="coerce").to_numpy(dtype=float)
+    e = pd.to_numeric(df.get(end_col), errors="coerce").to_numpy(dtype=float)
+    m = np.isfinite(s) & np.isfinite(e)
+    s = s[m]; e = e[m]
+    if s.size == 0:
+        return np.full(len(t_grid), np.nan, dtype=float)
+
+    d = (e - s).astype(float)
+    d = np.where(np.isfinite(d), np.maximum(d, 0.0), np.nan)
+
+    order = np.argsort(e, kind="mergesort")
+    e = e[order]
+    d = d[order]
+
+    # Prefix sums for fast queries.
+    cum = np.cumsum(np.where(np.isfinite(d), d, 0.0))
+    counts = np.cumsum(np.isfinite(d).astype(int))
+
+    # Evaluate at times.
+    out = np.empty_like(tg, dtype=float)
+    for i, t in enumerate(tg):
+        k = int(np.searchsorted(e, float(t), side="right"))
+        if k <= 0:
+            out[i] = np.nan
+        else:
+            ssum = float(cum[k - 1])
+            ccnt = int(counts[k - 1])
+            out[i] = (ssum / ccnt) if ccnt > 0 else np.nan
+    return out
+
 
 def _series_avg_send_duration(df, bins=300, anchor="t_end"):
-    # Series avg send duration.
-    if df.empty:
-        # Branch based on the current state / selection.
+    """Step series of cumulative average send duration.
+
+    At each time t, the value is the average duration of all sends that ended by t.
+    The series only changes at send-end timestamps and is rendered as 90° steps.
+    """
+    if df is None or df.empty:
         return [], []
-    t0 = float(df[anchor].min()); t1 = float(df[anchor].max())
-    if t1 <= t0: t1 = t0 + 1.0
-    edges = np.linspace(t0, t1, bins + 1)
-    durations = (df["t_end"].astype(float) - df["t_start"].astype(float)).clip(lower=0.0).values
-    sums   = np.histogram(df[anchor].astype(float).values, bins=edges, weights=durations)[0]
-    counts = np.histogram(df[anchor].astype(float).values, bins=edges)[0]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        # Use a context manager to manage resources safely.
-        avg = np.where(counts > 0, sums / counts, np.nan)
-    centers = (edges[:-1] + edges[1:]) / 2.0
-    return centers, avg
+
+    e = pd.to_numeric(df.get(anchor), errors="coerce").to_numpy(dtype=float)
+    s = pd.to_numeric(df.get("t_start"), errors="coerce").to_numpy(dtype=float)
+    m = np.isfinite(s) & np.isfinite(e)
+    s = s[m]; e = e[m]
+    if s.size == 0:
+        return [], []
+
+    d = (e - s).astype(float)
+    d = np.maximum(d, 0.0)
+
+    order = np.argsort(e, kind="mergesort")
+    e = e[order]
+    d = d[order]
+
+    uniq_e, idx0 = np.unique(e, return_index=True)
+    sum_by = np.add.reduceat(d, idx0)
+    cnt_by = np.add.reduceat(np.ones_like(d, dtype=float), idx0)
+
+    cum_sum = 0.0
+    cum_cnt = 0.0
+    t_out = []
+    y_out = []
+
+    for tt, ssum, ccnt in zip(uniq_e, sum_by, cnt_by):
+        tt = float(tt)
+        # Value before tt (strictly before) is the previous cumulative average.
+        if cum_cnt > 0:
+            t_out.append(tt)
+            y_out.append(float(cum_sum / cum_cnt))
+
+        # Add all sends that ended at tt.
+        cum_sum += float(ssum)
+        cum_cnt += float(ccnt)
+
+        # Value at/after tt is the updated cumulative average.
+        if cum_cnt > 0:
+            t_out.append(tt)
+            y_out.append(float(cum_sum / cum_cnt))
+
+    return np.asarray(t_out, dtype=float), np.asarray(y_out, dtype=float)
 
 def _chunk_wip_from_start_finish(starts_map, fins_map, bins=300):
-    # Chunk wip from start finish.
+    """Chunk WIP from start/finish maps, event-driven (step)."""
     if not starts_map or not fins_map:
-        # Validate inputs / state before continuing.
         return [], []
-    t0 = min(float(v) for v in starts_map.values())
-    t1 = max(float(v) for v in fins_map.values())
-    if t1 <= t0: t1 = t0 + 1.0
-    edges = np.linspace(t0, t1, bins + 1)
-    starts = np.histogram([float(v) for v in starts_map.values()], bins=edges)[0]
-    fins   = np.histogram([float(v) for v in fins_map.values()],   bins=edges)[0]
-    wip = np.cumsum(starts - fins)
-    centers = (edges[:-1] + edges[1:]) / 2.0
-    return centers, wip
+
+    s = np.array([float(v) for v in starts_map.values() if v is not None], dtype=float)
+    f = np.array([float(v) for v in fins_map.values() if v is not None], dtype=float)
+    s = s[np.isfinite(s)]
+    f = f[np.isfinite(f)]
+    if s.size == 0 or f.size == 0:
+        return [], []
+
+    t0 = float(np.min(s))
+    t1 = float(np.max(f))
+    if t1 <= t0:
+        t1 = t0 + 1.0
+
+    times = np.concatenate([s, f]).astype(float)
+    deltas = np.concatenate([np.ones_like(s, dtype=float), -np.ones_like(f, dtype=float)])
+
+    order = np.argsort(times, kind="mergesort")
+    times = times[order]
+    deltas = deltas[order]
+
+    uniq_t, idx0 = np.unique(times, return_index=True)
+    delta_sum = np.add.reduceat(deltas, idx0)
+
+    w = 0.0
+    t_out = []
+    y_out = []
+    for t, d in zip(uniq_t, delta_sum):
+        t = float(t)
+        t_out.append(t); y_out.append(w)
+        w += float(d)
+        if w < 0:
+            w = 0.0
+        t_out.append(t); y_out.append(w)
+
+    if t_out and t_out[-1] != float(t1):
+        t_out.append(float(t1))
+        y_out.append(float(w))
+
+    return np.asarray(t_out, dtype=float), np.asarray(y_out, dtype=float)
 
 
 # ---- Fast path cache for Post-left chart ----
@@ -2022,7 +2774,23 @@ def _get_viz_parameters(viz=None):
     # 1. Link Variables
     for lv in getattr(target, "link_vars", []):
         # Iterate over the relevant items and accumulate results.
-        params.append({"label": f"{lv.name} (Link)", "value": lv.name, "type": "link"})
+        name = getattr(lv, "name", "")
+        if not name:
+            continue
+
+        # Raw link parameter.
+        params.append({"label": f"{name} (Link)", "value": name, "type": "link"})
+
+        # Derived: normalize by capacity from the loaded topology.
+        # Exposed as "<name>/capacity" and behaves like a normal link parameter (color/filter/plot).
+        if not str(name).endswith("/capacity"):
+            params.append({
+                "label": f"{name}/capacity (Link)",
+                "value": f"{name}/capacity",
+                "type": "link",
+                "derived": "capacity_ratio",
+                "base": name,
+            })
 
     # 2. Data Variables
     for dv in getattr(target, "data_vars", []):
@@ -2279,12 +3047,174 @@ def _dv_chunk_counts_in_segment(dv, t0, t1):
 
 
 
+def _dv_nodes_edges_for_chunk_in_segment(dv, chunk_id, t0, t1):
+    """
+    Return (nodes_set, edge_ud_keys_set) for a DataVar + chunk within [t0,t1].
+
+    Semantics:
+    - A node is included if the chunk was on that node for any time overlapping the window.
+    - An edge is included if the chunk traversed that link at any time overlapping the window.
+    - Edge keys are undirected strings ("lo-hi"), matching _ud_edge_key().
+    """
+    nodes = set()
+    edges = set()
+
+    if dv is None:
+        return nodes, edges
+
+    try:
+        cid = int(chunk_id)
+        t0f = float(t0)
+        t1f = float(t1)
+    except Exception:
+        return nodes, edges
+
+    # 1) Edge presence: rely on the DataVar's link trace helper if present.
+    links = []
+    try:
+        links = dv.links_for_chunk_in_segment(cid, t0f, t1f) or []
+    except Exception:
+        links = []
+
+    for l in links:
+        try:
+            src = int(l.get("src"))
+            dst = int(l.get("dst"))
+        except Exception:
+            try:
+                src = int(l["src"])
+                dst = int(l["dst"])
+            except Exception:
+                continue
+        edges.add(_ud_edge_key(src, dst))
+        nodes.add(src)
+        nodes.add(dst)
+
+    # 2) Node presence: prefer send records to infer "on-node" intervals.
+    sends = getattr(dv, "sends", None)
+    if isinstance(sends, list) and sends:
+        chunk_key = None
+        if isinstance(sends[0], dict):
+            for k in ("chunk", "chunk_id", "cid", "data_id"):
+                if k in sends[0]:
+                    chunk_key = k
+                    break
+        if chunk_key is None:
+            chunk_key = "chunk"
+
+        seg = []
+        for rec in sends:
+            if not isinstance(rec, dict):
+                continue
+            try:
+                if int(rec.get(chunk_key)) != cid:
+                    continue
+                st = float(rec.get("t_start"))
+                en = float(rec.get("t_end"))
+                src = int(rec.get("src"))
+                dst = int(rec.get("dst"))
+                seg.append((st, en, src, dst))
+            except Exception:
+                continue
+
+        seg.sort(key=lambda x: x[0])
+
+        if seg:
+            node_lc = getattr(dv, "nodeLifeCycle", None)
+
+            def _earliest_arrival(node):
+                try:
+                    if isinstance(node_lc, list) and 0 <= int(node) < len(node_lc):
+                        ad = node_lc[int(node)]
+                        if not isinstance(ad, dict):
+                            return None
+                        arrs = ad.get(cid)
+                        if arrs is None:
+                            arrs = ad.get(str(cid))
+                        if not arrs:
+                            return None
+                        ts = []
+                        for (ts0, _msg) in arrs:
+                            try:
+                                ts.append(float(ts0))
+                            except Exception:
+                                continue
+                        return min(ts) if ts else None
+                except Exception:
+                    return None
+                return None
+
+            cur_node = int(seg[0][2])
+            cur_arr = _earliest_arrival(cur_node)
+            if cur_arr is None:
+                cur_arr = float(seg[0][0])
+
+            for st, en, src, dst in seg:
+                src = int(src); dst = int(dst)
+                st = float(st); en = float(en)
+
+                # If the trace jumps (shouldn't), reset to keep best-effort correctness.
+                if src != cur_node:
+                    cur_node = src
+                    cur_arr = _earliest_arrival(cur_node)
+                    if cur_arr is None:
+                        cur_arr = st
+
+                # Presence on the current node from cur_arr -> st
+                if max(cur_arr, t0f) <= min(st, t1f):
+                    nodes.add(cur_node)
+
+                # Link traversal overlaps the window (add even if links_for_chunk_in_segment was unavailable)
+                if max(st, t0f) <= min(en, t1f):
+                    nodes.add(src)
+                    nodes.add(dst)
+                    edges.add(_ud_edge_key(src, dst))
+
+                cur_node = dst
+                cur_arr = en
+
+            # After the last send, chunk remains on the last destination (best-effort) until sim end.
+            sim_end = float(getattr(dv, "time", t1f))
+            if max(cur_arr, t0f) <= min(sim_end, t1f):
+                nodes.add(cur_node)
+
+            return nodes, edges
+
+    # 3) Fallback: if we can't infer "leave" times, treat "arrived by t1" as "present".
+    node_lc = getattr(dv, "nodeLifeCycle", None)
+    if isinstance(node_lc, list):
+        for nid, arrivals_dict in enumerate(node_lc):
+            if not isinstance(arrivals_dict, dict):
+                continue
+            arrs = arrivals_dict.get(cid)
+            if arrs is None:
+                arrs = arrivals_dict.get(str(cid))
+            if not arrs:
+                continue
+            try:
+                t_first = min(float(ts) for (ts, _msg) in arrs)
+            except Exception:
+                continue
+            if t_first <= t1f:
+                nodes.add(int(nid))
+
+    return nodes, edges
+
+
+
 def _calculate_param_values(param_name, t0, t1, data_id=None, viz=None):
     """Calculate values for the named parameter on a specific VIZ object."""
     # Calculate param values.
     target_var = None
     var_type = "link"
     target_viz = viz if viz is not None else VIZ
+
+    # Support derived link parameters of the form "<link_var>/capacity".
+    derived_capacity = False
+    base_param_name = param_name
+    if isinstance(param_name, str) and param_name.endswith("/capacity"):
+        derived_capacity = True
+        base_param_name = param_name[:-len("/capacity")].strip()
     
     if target_viz is None or not param_name:
         # Validate inputs / state before continuing.
@@ -2293,7 +3223,7 @@ def _calculate_param_values(param_name, t0, t1, data_id=None, viz=None):
     # Find the variable in the specific VIZ
     for lv in getattr(target_viz, "link_vars", []):
         # Iterate over the relevant items and accumulate results.
-        if lv.name == param_name:
+        if lv.name == base_param_name:
             # Branch based on the current state / selection.
             target_var = lv; var_type = "link"; break
     
@@ -2326,6 +3256,27 @@ def _calculate_param_values(param_name, t0, t1, data_id=None, viz=None):
             prev = values.get(k)
             if prev is None or float(avg) > float(prev):
                 values[k] = float(avg)
+        # Apply derived scaling by topology capacity if requested.
+        if derived_capacity:
+            cap_map = {}
+            try:
+                for u, v, ed in G.edges(data=True):
+                    try:
+                        cap = float(ed.get("capacity", 0.0))
+                    except Exception:
+                        cap = 0.0
+                    if cap > 0.0:
+                        cap_map[_ud_edge_key(u, v)] = cap
+            except Exception:
+                cap_map = {}
+
+            for k in list(values.keys()):
+                cap = cap_map.get(k, 0.0)
+                if cap > 0.0:
+                    values[k] = float(values.get(k, 0.0)) / cap
+                else:
+                    values[k] = 0.0
+
 
         vals_list = list(values.values())
         
@@ -3880,6 +4831,30 @@ def panel_collective_details():
             children=[]
         ),
 
+
+html.Hr(),
+
+# Logs in this collective
+html.H4("Logs in this Collective", style={"margin": "8px 0 6px"}),
+html.Div(
+    "Remove logs from this collective. (This does not delete files from disk.)",
+    style=LABEL_MUTED
+),
+html.Div(
+    id="coll-logs-container",
+    style={
+        "marginTop": "8px",
+        "border": "1px solid #e1e7ef",
+        "borderRadius": "6px",
+        "padding": "8px",
+        "maxHeight": "220px",
+        "overflowY": "auto",
+        "backgroundColor": "#f9f9f9",
+        "fontSize": "12px"
+    },
+    children=[]
+),
+html.Div(id="coll-log-ops-status", style=LABEL_MUTED | {"marginTop": "8px"}),
     ])
 
 def panel_logs():
@@ -3940,6 +4915,7 @@ app.layout = html.Div(
                                 html.Div(
                                     className="menu__content",
                                     children=[
+                                        html.Button("New topology", id="menu-topology-file", className="menu__item"),
                                         html.Button(
                                             "Save session",
                                             id="menu-save",
@@ -3951,11 +4927,10 @@ app.layout = html.Div(
                                             className="menu__item",
                                         ),
                                         html.Button(
-                                            "New…",
+                                            "Reset",
                                             id="menu-new",
                                             className="menu__item",
                                         ),
-                                        html.Button("Topology file…", id="menu-topology-file", className="menu__item"),
                                         html.Div(className="menu__sep"),
                                     ],
                                 ),
@@ -4109,6 +5084,7 @@ app.layout = html.Div(
                         dcc.Store(id="avail-params", data=[]),    # Stores list of parameters found in the log
                         dcc.Store(id="param-values", data={}),    # Stores calculated values for coloring
                         dcc.Store(id="param-filter-store", data=None),  # Stores {name, min, max} for filtering
+                        dcc.Store(id="dv-trace-filter-store", data=None),  # Stores {param, chunk} for segment trace filtering
 
                         dcc.Store(id="editing-collective-id", data=None),
                         dcc.Store(id="topo-states", data={}),
@@ -4876,7 +5852,8 @@ def save_layout_js(_n, path):
         }
         const pos={};
         cy.nodes().forEach(n=>{ const p=n.position(); pos[n.id()]={x:p.x,y:p.y}; });
-        fetch('/save_layout',{method:'POST',headers:{'Content-Type':'application/json'},
+        var _dp = (()=>{try{const p=(window.__dash_config&&window.__dash_config.requests_pathname_prefix)||'/'; if(p==='/' ) return ''; return p.endsWith('/')?p.slice(0,-1):p;}catch(e){return ''}})();
+        fetch(_dp + '/save_layout',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({positions:pos,captured_at:Date.now(),path:$PATH_JS})})
           .then(r=>r.json()).then(js=>status(js && js.message?js.message:'Saved.'))
           .catch(e=>status('Save failed: '+e));
@@ -5494,6 +6471,128 @@ def build_elements(base_elements, node_filter_ids, isolate_mode, snapshot_ids, h
                 el["classes"] = " ".join(sorted(parts))
 
     return elements
+
+# ---------------------------------------------------------
+# NEW: Persist live node positions (dragged layout) so the graph never "snaps back"
+# ---------------------------------------------------------
+
+def _pos_map_from_elements(elements):
+    """Extract {node_id: {x,y}} from Cytoscape elements."""
+    pos = {}
+    if not isinstance(elements, list):
+        return pos
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        data = el.get("data") or {}
+        if not isinstance(data, dict):
+            continue
+        # Nodes have an 'id' and do NOT have 'source'/'target'
+        if "source" in data or "target" in data:
+            continue
+        nid = data.get("id")
+        if nid is None:
+            continue
+        p = el.get("position")
+        if not isinstance(p, dict):
+            continue
+        try:
+            x = float(p.get("x"))
+            y = float(p.get("y"))
+        except Exception:
+            continue
+        pos[str(nid)] = {"x": x, "y": y}
+    return pos
+
+
+def _pos_signature(pos_map):
+    """Stable signature for quick equality checks (rounded to avoid float noise)."""
+    if not isinstance(pos_map, dict):
+        return ()
+    items = []
+    for k, v in pos_map.items():
+        if not isinstance(v, dict):
+            continue
+        try:
+            x = round(float(v.get("x")), 3)
+            y = round(float(v.get("y")), 3)
+        except Exception:
+            continue
+        items.append((str(k), x, y))
+    items.sort()
+    return tuple(items)
+
+
+def _apply_pos_map_to_base(base_elements, pos_map):
+    """Return a copy of base_elements with node positions overwritten from pos_map."""
+    base_elements = base_elements or []
+    if not isinstance(base_elements, list):
+        return base_elements
+    out = []
+    for el in base_elements:
+        if not isinstance(el, dict):
+            out.append(el)
+            continue
+        d = el.get("data") or {}
+        if isinstance(d, dict) and ("source" not in d and "target" not in d):
+            nid = d.get("id")
+            key = str(nid) if nid is not None else None
+            if key is not None and key in (pos_map or {}):
+                new_el = {**el}
+                new_el["position"] = {"x": float(pos_map[key]["x"]), "y": float(pos_map[key]["y"])}
+                out.append(new_el)
+                continue
+        out.append({**el})
+    return out
+
+
+@app.callback(
+    Output("elements-base", "data", allow_duplicate=True),
+    Output("saved-layout", "data", allow_duplicate=True),
+    Input("network-graph", "elements"),
+    State("elements-base", "data"),
+    State("saved-layout", "data"),
+    prevent_initial_call=True
+)
+def persist_live_layout(cur_elements, base_elements, saved_layout):
+    """Whenever the user drags nodes, persist positions into elements-base + saved-layout."""
+    pos_map = _pos_map_from_elements(cur_elements)
+    if not pos_map:
+        raise PreventUpdate
+
+    # Compare ONLY nodes present in the current view (filters/isolation may hide nodes).
+    base_map = _pos_map_from_elements(base_elements)
+    base_sub = {k: base_map.get(k) for k in pos_map.keys() if k in base_map}
+
+    saved_pos = (saved_layout or {}).get("positions") or {}
+    if not isinstance(saved_pos, dict):
+        saved_pos = {}
+    saved_sub = {k: saved_pos.get(k) for k in pos_map.keys() if k in saved_pos}
+
+    sig_cur = _pos_signature(pos_map)
+    sig_base = _pos_signature(base_sub)
+    sig_saved = _pos_signature(saved_sub)
+
+    out_base = no_update
+    out_saved = no_update
+
+    if sig_cur != sig_base:
+        out_base = _apply_pos_map_to_base(base_elements, pos_map)
+
+    if sig_cur != sig_saved:
+        # Merge (do not drop hidden nodes)
+        merged = dict(saved_pos)
+        merged.update(pos_map)
+        new_saved = dict(saved_layout or {})
+        new_saved["positions"] = merged
+        out_saved = new_saved
+
+    if out_base is no_update and out_saved is no_update:
+        raise PreventUpdate
+
+    return out_base, out_saved
+
+
 
 @app.callback(
     Output("isolate-mode", "data", allow_duplicate=True),
@@ -6630,6 +7729,91 @@ def node_filter_actions(n_apply, n_add, n_clear, spec, r_start, r_end, r_step, p
 # =========================
 # Groups manager (user-defined groups)
 # =========================
+@server.route("/save_layout", methods=["POST"])
+def save_layout_route():
+    """Persist a layout preset (node positions) to disk and return JSON.
+
+    This endpoint is used by the front-end `var _dp = (()=>{try{const p=(window.__dash_config&&window.__dash_config.requests_pathname_prefix)||'/'; if(p==='/' ) return ''; return p.endsWith('/')?p.slice(0,-1):p;}catch(e){return ''}})();
+        fetch(_dp + '/save_layout', ...)` code.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        positions = payload.get("positions") or {}
+        path = payload.get("path") or PRESET_FILE
+        captured_at = payload.get("captured_at")
+
+        if not isinstance(positions, dict):
+            return jsonify(ok=False, message="Invalid payload: 'positions' must be an object/dict."), 400
+
+        path = os.path.expanduser(str(path))
+        if not os.path.isabs(path):
+            path = os.path.join(BASE_DIR, path)
+
+        _atomic_json_write(path, {"positions": positions, "captured_at": captured_at})
+        return jsonify(ok=True, message=f"Layout saved to {path}", path=path, count=len(positions))
+
+    except Exception as e:
+        # Always return JSON so the client does not crash on `.json()` parsing.
+        return jsonify(ok=False, message=f"Failed to save layout: {e}"), 500
+
+
+@server.route("/defaults_layout", methods=["POST"])
+def defaults_layout_route():
+    """CRUD for named default layouts (stored in DEFAULTS_FILE).
+
+    Used by the front-end `fetch('/defaults_layout', ...)` code.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        op = str(payload.get("op") or "").strip()
+
+        # Ensure file exists
+        if not os.path.exists(DEFAULTS_FILE):
+            _atomic_json_write(DEFAULTS_FILE, {"defaults": {}})
+
+        try:
+            with open(DEFAULTS_FILE, "r") as f:
+                data = json.load(f) or {}
+        except Exception:
+            data = {"defaults": {}}
+
+        defaults = data.get("defaults", {}) or {}
+
+        if op == "save":
+            name = str(payload.get("name") or "").strip()
+            positions = payload.get("positions") or {}
+            if not name:
+                return jsonify(ok=False, message="Missing 'name'."), 400
+            if not isinstance(positions, dict):
+                return jsonify(ok=False, message="Invalid payload: 'positions' must be an object/dict."), 400
+
+            defaults[name] = {"positions": positions, "saved_at": payload.get("captured_at")}
+            data["defaults"] = defaults
+            _atomic_json_write(DEFAULTS_FILE, data)
+            return jsonify(ok=True, message=f"Saved default '{name}'.", name=name)
+
+        if op == "list":
+            return jsonify(ok=True, names=sorted(defaults.keys()))
+
+        if op == "get":
+            name = str(payload.get("name") or "").strip()
+            if name not in defaults:
+                return jsonify(ok=False, message=f"Default '{name}' not found."), 404
+            return jsonify(ok=True, name=name, positions=defaults[name].get("positions", {}))
+
+        if op == "delete":
+            name = str(payload.get("name") or "").strip()
+            if name in defaults:
+                defaults.pop(name, None)
+                data["defaults"] = defaults
+                _atomic_json_write(DEFAULTS_FILE, data)
+            return jsonify(ok=True, message=f"Deleted default '{name}'.", name=name)
+
+        return jsonify(ok=False, message="Unknown op."), 400
+
+    except Exception as e:
+        return jsonify(ok=False, message=f"Failed to handle defaults_layout: {e}"), 500
+
 @server.route("/node_groups", methods=["POST"])
 def node_groups_route():
     # Node groups route.
@@ -7400,19 +8584,10 @@ def nav_collective_page(n_details):
     except Exception:
         raise PreventUpdate
 
-    clicked_n = None
-    for group in (getattr(ctx, "inputs_list", None) or []):
-        if isinstance(group, list):
-            for item in group:
-                if item.get("id") == trig_id and item.get("property") == trig_prop:
-                    clicked_n = item.get("value")
-                    break
-        elif isinstance(group, dict):
-            if group.get("id") == trig_id and group.get("property") == trig_prop:
-                clicked_n = group.get("value")
-        if clicked_n is not None:
-            break
+    clicked_n = trig.get("value", None)
 
+    # Only act on a real click (n_clicks > 0). Using ctx.triggered[0]['value'] is robust
+    # even if the topology list is re-rendering while the request is in-flight.
     if not isinstance(clicked_n, (int, float)) or clicked_n <= 0:
         raise PreventUpdate
 
@@ -7493,10 +8668,14 @@ def update_collective_active_params(flow_param, data_param, cid, topo_collective
 
         if not V:
             continue
-
         for lv in (getattr(V, "link_vars", []) or []):
-            all_flow.add(lv.name)
-            all_params.add(lv.name)
+            name = getattr(lv, "name", "")
+            if not name:
+                continue
+            all_flow.add(name)
+            all_params.add(name)
+            # Derived capacity-normalized view for every link parameter.
+            all_params.add(f"{name}/capacity")
         for dv in (getattr(V, "data_vars", []) or []):
             all_data.add(dv.name)
             all_params.add(dv.name)
@@ -7517,8 +8696,11 @@ def update_collective_active_params(flow_param, data_param, cid, topo_collective
         candidates = [p for p in sorted(all_data) if p not in hidden_now]
         if candidates:
             data_param = candidates[0]
-
     active_set = {p for p in (flow_param, data_param) if p}
+
+    # If a flow parameter is active, also expose its derived "<flow>/capacity" variant.
+    if flow_param:
+        active_set.add(f"{flow_param}/capacity")
 
     new_hidden = sorted(list(all_params - active_set))
 
@@ -7606,7 +8788,6 @@ def update_available_params(active_coll_map, active_topo_id, topo_logs):
 def update_xy_dropdowns(mode, avail_params, cur_x, cur_y):
     # 1. DATA MODE (Legacy behavior)
     if mode == "data":
-        # Keep current values if they exist in XY_OPTIONS, else reset
         valid_vals = set(o["value"] for o in XY_OPTIONS)
         new_x = cur_x if cur_x in valid_vals else "time"
         new_y = cur_y if cur_y in valid_vals else "postleft_avg"
@@ -7615,29 +8796,50 @@ def update_xy_dropdowns(mode, avail_params, cur_x, cur_y):
     # 2. LINK MODE
     # X axis is almost always Time
     x_opts = [{"label": "Time (series)", "value": "time"}]
-    
-    # Y axis: Filter 'avail-params' for items where type='link'
+
+    # Y axis: include link vars + derived metrics
     y_opts = []
     if avail_params:
-        for p in avail_params:
-            if p.get("type") == "link":
-                label = p.get("label", p.get("value"))
-                # Clean up label if needed (remove duplicates)
-                if "(Link)" not in label: label += " (Total)"
-                else: label = label.replace("(Link)", "(Total)")
-                
-                y_opts.append({"label": label, "value": p["value"]})
-    
+        for p in (avail_params or []):
+            if p.get("type") != "link":
+                continue
+
+            var = p.get("value")
+            if not var:
+                continue
+
+            label = p.get("label", var)
+            if "(Link)" not in label and "(Total)" not in label:
+                label = f"{label} (Total)"
+            else:
+                label = label.replace("(Link)", "(Total)")
+
+            # Base metric: total across all links
+            y_opts.append({"label": label, "value": var})
+
+            # Derived metric: number of links with var == 0
+            y_opts.append({"label": f"# links where {var}=0 (series)", "value": f"__zero_count__::{var}"})
+
+            # Derived metric: total unused capacity across all physical links.
+            # Only meaningful for flow-like link vars.
+            try:
+                _vnm = str(var).strip().lower()
+            except Exception:
+                _vnm = ""
+            if (_vnm == "flow") or _vnm.endswith("flow") or ("throughput" in _vnm):
+                y_opts.append({
+                    "label": f"Unused capacity (Σ(capacity - {var})) (series)",
+                    "value": f"__unused_capacity__::{var}"
+                })
+
     if not y_opts:
         y_opts.append({"label": "No link vars found", "value": "none", "disabled": True})
-    
+
     new_x = "time"
-    # Try to preserve Y if it exists in new options, else pick first
-    valid_y = set(o["value"] for o in y_opts)
-    new_y = cur_y if cur_y in valid_y else (y_opts[0]["value"] if y_opts else None)
+    valid_y = set(o["value"] for o in y_opts if not o.get("disabled"))
+    new_y = cur_y if cur_y in valid_y else next((o["value"] for o in y_opts if not o.get("disabled")), None)
 
     return x_opts, new_x, y_opts, new_y
-
 
 
 @app.callback(
@@ -7892,6 +9094,312 @@ def populate_collective_page(cid, topo_collectives):
     return current_name, header, flow_ui, data_ui
 
 
+
+
+# ---------------------------------------------------------
+# Collective Page: Log list + Remove log from collective
+# ---------------------------------------------------------
+
+@app.callback(
+    Output("coll-logs-container", "children"),
+    Input("editing-collective-id", "data"),
+    Input("topo-logs", "data"),
+    prevent_initial_call=False,
+)
+def render_collective_logs_list(cid, topo_collectives):
+    """Render the per-log rows on the Collective Page (rename + delete-from-collective)."""
+    if cid is None:
+        return html.Div("No collective selected.", style=LABEL_MUTED)
+
+    # Find the collective object (scan all topologies)
+    coll = None
+    for _tid, col_list in (topo_collectives or {}).items():
+        for c in (col_list or []):
+            if str(c.get("id")) == str(cid):
+                coll = c
+                break
+        if coll:
+            break
+
+    if not coll:
+        return html.Div("Collective not found.", style=LABEL_MUTED)
+
+    logs = coll.get("logs", []) or []
+    if not logs:
+        return html.Div("No logs in this collective.", style=LABEL_MUTED)
+
+    rows = []
+    for log in logs:
+        lid = log.get("id")
+        label = log.get("label", f"log {lid}")
+        path = log.get("path", "")
+
+        # Rename input + buttons
+        rows.append(
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Div(label, style={"fontWeight": 600, "fontSize": "12px"}),
+                            html.Div(path, style={"fontSize": "11px", "color": "#6b7280", "wordBreak": "break-all"}),
+                        ],
+                        style={"flex": "1 1 auto", "minWidth": "240px"},
+                    ),
+                    dcc.Input(
+                        id={"type": "coll-log-rename-input", "cid": str(cid), "lid": str(lid)},
+                        type="text",
+                        value=label,
+                        debounce=True,
+                        style={
+                            "width": "180px",
+                            "fontSize": "12px",
+                            "padding": "4px 6px",
+                            "borderRadius": "6px",
+                            "border": "1px solid #e5e7eb",
+                            "marginRight": "8px",
+                        },
+                    ),
+                    html.Button(
+                        "Rename",
+                        id={"type": "coll-rename-log-btn", "cid": str(cid), "lid": str(lid)},
+                        n_clicks=0,
+                        style={
+                            "fontSize": "12px",
+                            "padding": "4px 10px",
+                            "borderRadius": "8px",
+                            "border": "1px solid #d1d5db",
+                            "background": "#f9fafb",
+                            "cursor": "pointer",
+                            "marginRight": "8px",
+                        },
+                    ),
+                    html.Button(
+                        "Delete",
+                        id={"type": "coll-remove-log-btn", "cid": str(cid), "lid": str(lid)},
+                        n_clicks=0,
+                        style={
+                            "fontSize": "12px",
+                            "padding": "4px 10px",
+                            "borderRadius": "8px",
+                            "border": "1px solid #ef4444",
+                            "background": "#fff5f5",
+                            "color": "#b91c1c",
+                            "cursor": "pointer",
+                        },
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "0px",
+                    "padding": "8px",
+                    "border": "1px solid #f0f2f5",
+                    "borderRadius": "8px",
+                    "background": "white",
+                    "marginBottom": "8px",
+                },
+            )
+        )
+
+    return rows
+
+
+
+
+@app.callback(
+    Output("topo-logs", "data", allow_duplicate=True),
+    Output("multi-logs", "data", allow_duplicate=True),
+    Output("multi-logs-include", "data", allow_duplicate=True),
+    Output("coll-log-ops-status", "children", allow_duplicate=True),
+    Input({"type": "coll-remove-log-btn", "cid": ALL, "lid": ALL}, "n_clicks"),
+    State("topology-radio", "value"),
+    State("topo-logs", "data"),
+    State("multi-logs-include", "data"),
+    prevent_initial_call=True,
+)
+def remove_log_from_collective(_n_clicks, active_topo_id, topo_collectives, include_ids):
+    """Remove a log bundle from a collective (does not delete files from disk)."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # Ignore re-render triggers (n_clicks = 0)
+    triggered = ctx.triggered[0]
+    if not triggered.get("value"):
+        raise PreventUpdate
+
+    try:
+        trig_id = json.loads(triggered["prop_id"].split(".", 1)[0])
+    except Exception:
+        raise PreventUpdate
+
+    if not isinstance(trig_id, dict) or trig_id.get("type") != "coll-remove-log-btn":
+        raise PreventUpdate
+
+    cid = trig_id.get("cid")
+    lid = trig_id.get("lid")
+    if cid is None or lid is None:
+        raise PreventUpdate
+
+    topo_collectives = topo_collectives or {}
+
+    removed_lb = None
+    found = False
+
+    # Find the collective and remove the log bundle by ID
+    for tid, col_list in (topo_collectives or {}).items():
+        for i, coll in enumerate(col_list or []):
+            if str(coll.get("id")) != str(cid):
+                continue
+
+            logs = coll.get("logs", []) or []
+            removed_lb = next((x for x in logs if str(x.get("id")) == str(lid)), None)
+            new_logs = [x for x in logs if str(x.get("id")) != str(lid)]
+
+            if len(new_logs) == len(logs):
+                return no_update, no_update, no_update, f"Log {lid} not found in this collective."
+
+            new_coll = dict(coll)
+            new_coll["logs"] = new_logs
+
+            new_list = list(col_list)
+            new_list[i] = new_coll
+
+            topo_collectives = dict(topo_collectives)
+            topo_collectives[str(tid)] = new_list
+
+            found = True
+            break
+        if found:
+            break
+
+    if not found:
+        return no_update, no_update, no_update, "Collective not found."
+
+    # Update global selection to avoid referencing removed logs
+    new_include = []
+    for x in (include_ids or []):
+        if str(x) != str(lid):
+            new_include.append(x)
+
+    # Recompute multi-logs for the active topology (so overlays and selectors update immediately)
+    new_multi_logs = []
+    if active_topo_id is not None:
+        tid = str(active_topo_id)
+        seen = set()
+        for coll in (topo_collectives.get(tid, []) or []):
+            for lb in (coll.get("logs", []) or []):
+                try:
+                    ilid = int(lb.get("id"))
+                except Exception:
+                    continue
+                if ilid in seen:
+                    continue
+                seen.add(ilid)
+                new_multi_logs.append(lb)
+
+    # If this log id is no longer referenced anywhere, free its cached Visualizer instance.
+    try:
+        ilid = int(lid)
+    except Exception:
+        ilid = None
+
+    if ilid is not None:
+        still_used = False
+        for _tid, col_list in (topo_collectives or {}).items():
+            for coll in (col_list or []):
+                for lb in (coll.get("logs", []) or []):
+                    if str(lb.get("id")) == str(lid):
+                        still_used = True
+                        break
+                if still_used:
+                    break
+            if still_used:
+                break
+        if not still_used:
+            MULTI_VIZ_OBJS.pop(ilid, None)
+
+    label = None
+    if isinstance(removed_lb, dict):
+        label = removed_lb.get("label") or os.path.basename(str(removed_lb.get("path") or ""))
+
+    msg = f"Removed log {lid} from collective {cid}." if not label else f"Removed '{label}' (id={lid}) from collective {cid}."
+
+    return topo_collectives, new_multi_logs, new_include, msg
+
+
+
+@app.callback(
+    Output("topo-logs", "data", allow_duplicate=True),
+    Output("multi-logs", "data", allow_duplicate=True),
+    Output("coll-log-ops-status", "children", allow_duplicate=True),
+    Input({"type": "coll-rename-log-btn", "cid": ALL, "lid": ALL}, "n_clicks"),
+    State({"type": "coll-log-rename-input", "cid": ALL, "lid": ALL}, "value"),
+    State({"type": "coll-log-rename-input", "cid": ALL, "lid": ALL}, "id"),
+    State("topology-radio", "value"),
+    State("topo-logs", "data"),
+    prevent_initial_call=True,
+)
+def rename_log_in_collective(_n_clicks, all_labels, all_input_ids, active_topo_id, topo_collectives):
+    """Rename a log bundle inside a collective (does not affect files on disk)."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # Identify which row triggered the callback
+    try:
+        trig_raw = ctx.triggered[0]["prop_id"].split(".")[0]
+        trig = json.loads(trig_raw) if (isinstance(trig_raw, str) and trig_raw.startswith("{")) else getattr(ctx, "triggered_id", None)
+        if isinstance(trig, str):
+            trig = json.loads(trig)
+        cid = str((trig or {}).get("cid"))
+        lid = str((trig or {}).get("lid"))
+    except Exception:
+        raise PreventUpdate
+
+    # Pull the corresponding input value for this (cid,lid)
+    new_label = None
+    for _id, val in zip(all_input_ids or [], all_labels or []):
+        try:
+            if str(_id.get("cid")) == cid and str(_id.get("lid")) == lid:
+                new_label = val
+                break
+        except Exception:
+            continue
+
+    new_label = (new_label or "").strip()
+    if not new_label:
+        return no_update, no_update, "Rename failed: name cannot be empty."
+
+    topo_collectives = topo_collectives or {}
+
+    # Find and update the matching log label (scan all topologies)
+    found = False
+    for _tid, col_list in topo_collectives.items():
+        for coll in (col_list or []):
+            if str(coll.get("id")) != cid:
+                continue
+            for log in (coll.get("logs") or []):
+                if str(log.get("id")) == lid:
+                    log["label"] = new_label
+                    found = True
+                    break
+            break
+        if found:
+            break
+
+    if not found:
+        return no_update, no_update, f"Rename failed: log {lid} not found in collective {cid}."
+
+    # Recompute active logs list for current topology (so the UI updates immediately)
+    active_logs = []
+    if active_topo_id is not None:
+        tid = str(active_topo_id)
+        for coll in (topo_collectives.get(tid) or []):
+            if coll.get("active", False):
+                active_logs.extend(coll.get("logs", []) or [])
+
+    return topo_collectives, active_logs, f'Renamed log {lid} to "{new_label}".'
 
 @app.callback(
     Output("topo-logs", "data", allow_duplicate=True),
@@ -8285,6 +9793,59 @@ def set_active_filter(n_apply, n_clear, param, rng):
         
     return {"name": param, "min": rng[0], "max": rng[1]}, f"Filter active: {param} [{rng[0]:.2f} - {rng[1]:.2f}]"
 
+
+
+# --- 3b. Segment Chunk Presence Filter (DataVar + Chunk -> hide everything else) ---
+@app.callback(
+    Output("dv-trace-filter-store", "data"),
+    Output("pf-trace-filter-status", "children"),
+    Input("pf-apply-trace-filter", "n_clicks"),
+    Input("pf-clear-trace-filter", "n_clicks"),
+    Input("filter-param-dropdown", "value"),
+    State("pf-trace-chunk-id", "value"),
+    State("avail-params", "data"),
+    prevent_initial_call=True
+)
+def set_dv_trace_filter(n_apply, n_clear, selected_param, chunk_id, all_params):
+    """Enable/disable a segment trace visibility filter for a selected DataVar + chunk id."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    which = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    # Any parameter change resets this filter to avoid confusing cross-param carryover.
+    if which == "filter-param-dropdown":
+        return None, ""
+
+    if which == "pf-clear-trace-filter":
+        return None, "Chunk presence filter cleared."
+
+    if which != "pf-apply-trace-filter":
+        raise PreventUpdate
+
+    if selected_param is None or chunk_id is None:
+        return no_update, "Select a data variable and a chunk id first."
+
+    # Validate selected_param is a DataVar (not a LinkVar).
+    p_type = None
+    for p in (all_params or []):
+        try:
+            if p.get("value") == selected_param:
+                p_type = p.get("type")
+                break
+        except Exception:
+            continue
+
+    if p_type != "data":
+        return no_update, "Select a data variable (DataVar) to use chunk presence filtering."
+
+    try:
+        cid = int(chunk_id)
+    except Exception:
+        return no_update, "Invalid chunk id."
+
+    return {"param": selected_param, "chunk": cid}, f"Chunk presence filter active: {selected_param}, chunk {cid}."
+
 # --- 4. Apply Filter to Graph (Update style_edges) ---
 # Update your EXISTING style_edges callback to accept param-filter-store
 @app.callback(
@@ -8297,12 +9858,14 @@ def set_active_filter(n_apply, n_clear, param, rng):
     Input("highlight-chunk-links", "data"),
     Input("param-values", "data"),       
     Input("param-filter-store", "data"),
+    Input("dv-trace-filter-store", "data"),
+    Input("chunk-filter-ids", "data"),
     Input("active-collectives-map", "data"), # CHANGED
     Input("topology-radio", "value"),    
     State("topo-logs", "data"),
     prevent_initial_call=True,
 )
-def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chunk_link_hi, param_data, param_filter, active_coll_map, active_topo_id, topo_logs):
+def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chunk_link_hi, param_data, param_filter, dv_trace_filter, chunk_filter_ids, active_coll_map, active_topo_id, topo_logs):
     
     
     # Style edges.
@@ -8347,22 +9910,46 @@ def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chun
             # LinkVar filter: hide edges whose average value is outside [fmin, fmax].
             if ftype == "link":
                 data_map = filter_vals.get("data") or {}
+
+                # If the user is filtering by a flow-like parameter, also suppress "0" links
+                # even when the slider range includes 0. This avoids the common case where
+                # missing links (not present in the logs) default to 0 and would otherwise
+                # remain visible.
+                _fn = str(fname or "").strip().lower()
+                _base = _fn
+                if _base.endswith("/capacity"):
+                    _base = _base[:-len("/capacity")].strip()
+                is_flow_like = (_base == "flow") or _base.endswith("flow") or ("throughput" in _base)
+
                 for el in (elements or []):
                     d = el.get("data", {})
                     src, dst = str(d.get("source")), str(d.get("target"))
                     if not src or not dst:
                         continue
-                    key = f"{src}-{dst}"
-                    val = data_map.get(key)
+
+                    # _calculate_param_values() returns undirected keys (min-max).
+                    k_ud = _ud_edge_key(src, dst)
+                    val = data_map.get(k_ud)
                     if val is None:
-                        val = data_map.get(f"{dst}-{src}", None)
+                        # Backward-compatibility: accept directional keys if present.
+                        key = f"{src}-{dst}"
+                        val = data_map.get(key)
+                        if val is None:
+                            val = data_map.get(f"{dst}-{src}", None)
                     if val is None:
-                        continue
+                        val = 0.0
                     try:
                         vv = float(val)
                     except Exception:
-                        continue
-                    if vv < float(fmin) or vv > float(fmax):
+                        vv = 0.0
+
+                    hide = False
+                    if is_flow_like and vv <= 0.0:
+                        hide = True
+                    if (vv < float(fmin) or vv > float(fmax)):
+                        hide = True
+
+                    if hide:
                         styles.append({
                             "selector": f'edge[source="{src}"][target="{dst}"]',
                             "style": {"display": "none"}
@@ -8413,6 +10000,119 @@ def style_edges(cap_range, color_mode, seg_range, selected_types, elements, chun
                             "selector": f'edge[source="{src_s}"][target="{dst_s}"]',
                             "style": {"display": "none"}
                         })
+
+    # Segment Chunk Presence Filter (DataVar + chunk):
+    # When enabled, hide any node/edge that did NOT carry the selected chunk within the current time window.
+    if dv_trace_filter and dv_trace_filter.get("param") is not None and dv_trace_filter.get("chunk") is not None:
+        dv_name = dv_trace_filter.get("param")
+        try:
+            cid = int(dv_trace_filter.get("chunk"))
+        except Exception:
+            cid = None
+
+        if cid is not None:
+            t0, t1 = (seg_range or [TIME_MIN, TIME_MAX])
+
+            viz_list = _get_active_viz_list(active_coll_map, active_topo_id, topo_logs)
+            if not viz_list and VIZ is not None:
+                viz_list = [VIZ]
+
+            allowed_nodes = set()
+            allowed_edges = set()
+
+            for V in (viz_list or []):
+                dv_obj = None
+                for dv in (getattr(V, "data_vars", []) or []):
+                    if getattr(dv, "name", None) == dv_name:
+                        dv_obj = dv
+                        break
+                if dv_obj is None:
+                    continue
+
+                nset, eset = _dv_nodes_edges_for_chunk_in_segment(dv_obj, cid, float(t0), float(t1))
+                for n in (nset or []):
+                    allowed_nodes.add(str(n))
+                for e in (eset or []):
+                    allowed_edges.add(str(e))
+
+            all_node_ids = set()
+            all_edges = []
+
+            for el in (elements or []):
+                d = el.get("data", {}) or {}
+                if "source" in d and "target" in d:
+                    s = d.get("source"); t = d.get("target")
+                    if s is not None and t is not None:
+                        all_edges.append((str(s), str(t)))
+                elif d.get("id") is not None:
+                    all_node_ids.add(str(d.get("id")))
+
+            for nid in all_node_ids:
+                if nid not in allowed_nodes:
+                    styles.append({
+                        "selector": f'node[id="{nid}"]',
+                        "style": {"display": "none"}
+                    })
+
+            for src, dst in all_edges:
+                try:
+                    k = _ud_edge_key(src, dst)
+                except Exception:
+                    k = f"{min(src, dst)}-{max(src, dst)}"
+                if str(k) not in allowed_edges:
+                    styles.append({
+                        "selector": f'edge[source="{src}"][target="{dst}"]',
+                        "style": {"display": "none"}
+                    })
+
+    # Chunk filter (chunk-filter-ids): hide edges with 0 flow in the current segment.
+    # This makes "filter-by-chunk" views focus on active paths rather than the full topology.
+    if chunk_filter_ids:
+        try:
+            t0, t1 = (seg_range or [TIME_MIN, TIME_MAX])
+            t0f = float(t0); t1f = float(t1)
+            if t1f <= t0f:
+                t1f = t0f + 1e-9
+        except Exception:
+            t0f = float(TIME_MIN); t1f = float(TIME_MAX)
+
+        viz_list = _get_active_viz_list(active_coll_map, active_topo_id, topo_logs)
+        if not viz_list and VIZ is not None:
+            viz_list = [VIZ]
+
+        flow_vals = None
+        try:
+            flow_vals = _aggregate_param_values("flow", t0f, t1f, None, viz_list)
+        except Exception:
+            flow_vals = None
+
+        if flow_vals and flow_vals.get("type") == "link":
+            flow_map = flow_vals.get("data") or {}
+            # Only activate if there is some nonzero flow observed.
+            try:
+                has_nonzero = any(float(v) > 0.0 for v in flow_map.values())
+            except Exception:
+                has_nonzero = False
+            if has_nonzero:
+                for el in (elements or []):
+                    d = el.get("data", {})
+                    src, dst = str(d.get("source")), str(d.get("target"))
+                    if not src or not dst:
+                        continue
+                    k_ud = _ud_edge_key(src, dst)
+                    vv = flow_map.get(k_ud)
+                    if vv is None:
+                        vv = 0.0
+                    try:
+                        vv = float(vv)
+                    except Exception:
+                        vv = 0.0
+                    if vv <= 0.0:
+                        styles.append({
+                            "selector": f'edge[source="{src}"][target="{dst}"]',
+                            "style": {"display": "none"}
+                        })
+
 # ... (Coloring/Highlight logic is same) ...
     if color_mode == "parameter" and param_data:
         # Branch based on the current state / selection.
@@ -10245,28 +11945,26 @@ def clear_layout_after_apply(_elements, has_positions):
 # =========================
 # FULL SESSION SAVE/LOAD
 # =========================
-@server.route("/save_session", methods=["POST"])
+@server.route("/save_session", methods=["POST", "OPTIONS"])
+@server.route("/save_session/", methods=["POST", "OPTIONS"])
 def save_session_route():
-    # Serialize the current session state so it can be saved and later restored.
+    """Persist a full UI session to disk and return JSON (never HTML)."""
     try:
-        # Parse the incoming request body as JSON.
-        payload = request.get_json(force=True) or {}
-        path = payload.get("path") or SESSION_FILE
-        sess = payload.get("session") or {}
-        if not isinstance(sess, dict) or not sess:
-            # Validate inputs / state before continuing.
-            return jsonify(ok=False, message="No session payload."), 400
-        # Resolve and validate filesystem paths before using them.
-        path = os.path.expanduser(path)
-        if not os.path.isabs(path):
-            # Validate inputs / state before continuing.
-            # Resolve and validate filesystem paths before using them.
-            path = os.path.join(BASE_DIR, path)
-        _atomic_json_write(path, sess)
-        return jsonify(ok=True, message=f"Session saved → {path}")
+        data = request.get_json(silent=True) or {}
+        path = data.get("path") or SESSION_FILE
+        session = data.get("session") or {}
+
+        p = os.path.expanduser(path)
+        if not os.path.isabs(p):
+            p = os.path.join(BASE_DIR, p)
+
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        _atomic_json_write(p, session)
+        return jsonify(ok=True, message=f"Session saved to {p}", path=p)
     except Exception as e:
-        # Recover from a failure case and return a safe default.
         return jsonify(ok=False, message=f"Save session failed: {e}"), 500
+
+
 
 @app.callback(
     Output("runjs", "run", allow_duplicate=True),
@@ -10408,9 +12106,14 @@ def save_full_session_js(_n, path, active_panel, seg, cap_range, edge_types, col
           ui: $UI_JS 
         };
         
-        fetch('/save_session',{method:'POST',headers:{'Content-Type':'application/json'},
+        var _dp = (()=>{try{const p=(window.__dash_config&&window.__dash_config.requests_pathname_prefix)||'/'; if(p==='/' ) return ''; return p.endsWith('/')?p.slice(0,-1):p;}catch(e){return ''}})();
+        fetch(_dp + '/save_session',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({path:$PATH_JS, session:payload})})
-          .then(r=>r.json()).then(js=>status(js && js.message?js.message:'Session saved.'))
+          .then(async r=>{
+            const text = await r.text();
+            try { return JSON.parse(text); }
+            catch(e){ throw new Error('Non-JSON response (HTTP '+r.status+'): '+text.slice(0,160)); }
+          }).then(js=>status(js && js.message?js.message:'Session saved.'))
           .catch(e=>status('Save failed: '+e));
       })();
     })();
@@ -10631,6 +12334,81 @@ def load_full_session(_n, path):
                         pass
                 norm_map[str(_tid)] = out_ids
             active_coll_map = norm_map
+        # Rebuild multi-logs from ACTIVE COLLECTIVES (prevents post-load "chosen logs" flicker)
+        try:
+            _tid_key = str(active_topo_id) if active_topo_id is not None else None
+            if _tid_key:
+                _collectives = (topo_logs or {}).get(_tid_key, []) or []
+                _raw = (active_coll_map or {}).get(_tid_key, None)
+                _use_all = (_raw is None)  # missing key => treat all collectives active (compat)
+                _active_cids = set()
+                if not _use_all:
+                    for _x in (_raw or []):
+                        try:
+                            _active_cids.add(int(_x))
+                        except Exception:
+                            continue
+
+                _gathered = []
+                for _c in (_collectives or []):
+                    if not isinstance(_c, dict):
+                        continue
+                    try:
+                        _cid = int(_c.get("id"))
+                    except Exception:
+                        continue
+                    if _use_all or (_cid in _active_cids):
+                        for _lb in (_c.get("logs") or []):
+                            if isinstance(_lb, dict):
+                                _gathered.append(_lb)
+
+                _seen = set()
+                _logs = []
+                for _lb in _gathered:
+                    try:
+                        _lid = int(_lb.get("id"))
+                    except Exception:
+                        continue
+                    if _lid in _seen:
+                        continue
+                    _seen.add(_lid)
+                    _logs.append(_lb)
+
+                # Reconcile selection against restored logs
+                _saved_sel = []
+                for _x in (global_log_selection or []):
+                    try:
+                        _saved_sel.append(int(_x))
+                    except Exception:
+                        pass
+                _saved_sel = sorted(set(_saved_sel))
+                _selected = [x for x in _saved_sel if x in _seen]
+
+                # Backwards compatibility: use topo_states[tid]['include'] if global selection missing
+                if (not _selected) and isinstance(topo_states, dict) and isinstance(topo_states.get(_tid_key), dict):
+                    try:
+                        _inc = topo_states[_tid_key].get("include") or []
+                        _inc2 = []
+                        for _x in (_inc or []):
+                            try:
+                                _inc2.append(int(_x))
+                            except Exception:
+                                pass
+                        _inc2 = sorted(set(_inc2))
+                        _selected = [x for x in _inc2 if x in _seen]
+                    except Exception:
+                        pass
+
+                # If still empty, default-select ALL logs (stable behavior)
+                if (not _selected) and _logs:
+                    _selected = sorted(_seen)
+
+                multi_logs_for_restore = _logs
+                global_log_selection = _selected
+        except Exception:
+            pass
+
+
 # If we do not have a target collective yet, pick the first active collective on the active topology (if any).
         if target_cid is None and active_topo_id is not None:
             _tid_key = str(active_topo_id)
@@ -10776,14 +12554,14 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
     if t1 < t0: t0, t1 = t1, t0
     # Build an evaluation time-grid from actual event timestamps (highest resolution available in the log).
     # This is the practical equivalent of "sample every nanosecond" without exploding runtime/memory.
-    def _make_time_grid(candidates, t0, t1, max_points=8000):
-        """Return the evaluation time grid for series computation.
+    def _make_time_grid(candidates, t0, t1, max_points=200000):
+        """Return an *event-driven* evaluation time grid.
 
-        For this UI, what you want visually is a *step-like* curve (90° turns) rather than
-        diagonals when many chunks complete close together. A uniform grid + step-shaped
-        lines achieves that without generating an enormous number of points.
+        We do NOT sample on a uniform linspace. Instead we evaluate on the union of known
+        event/change timestamps so Plotly can draw a true step function (90° turns) at the
+        exact moments values change.
 
-        'max_points' is kept for safety and future use.
+        If the candidate set is extremely large, we downsample uniformly for safety.
         """
         try:
             t0f = float(t0); t1f = float(t1)
@@ -10792,13 +12570,229 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
         if t1f < t0f:
             t0f, t1f = t1f, t0f
 
-        span = max(0.0, t1f - t0f)
-        if span == 0.0:
+        if t1f == t0f:
             return np.asarray([t0f], dtype=float)
 
-        # Aim for a reasonably smooth curve without excessive point-count.
-        n = int(min(max_points, max(120, 600)))
-        return np.linspace(t0f, t1f, n, dtype=float)
+        ts = []
+        for v in (candidates or []):
+            try:
+                fv = float(v)
+            except Exception:
+                continue
+            if not np.isfinite(fv):
+                continue
+            if fv < t0f or fv > t1f:
+                continue
+            ts.append(fv)
+
+        ts.append(t0f)
+        ts.append(t1f)
+
+        arr = np.asarray(ts, dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if arr.size == 0:
+            return np.asarray([t0f], dtype=float)
+
+        arr = np.unique(arr)
+        arr.sort()
+
+        # Safety: if there are too many points, downsample while keeping endpoints.
+        if max_points is not None and max_points > 2 and arr.size > int(max_points):
+            step = int(np.ceil(arr.size / float(max_points)))
+            arr = arr[::step]
+            # Re-ensure endpoint.
+            if arr.size == 0 or arr[-1] != t1f:
+                arr = np.concatenate([arr, np.asarray([t1f], dtype=float)])
+            arr = np.unique(arr)
+            arr.sort()
+
+        return arr
+
+
+    def _zero_count_series_event(per_link, topo_edges, t0, t1, max_points=200000):
+        '''Compute a time series of the number of links whose current value is 0 (inactive).
+
+        Notes:
+          - We treat links as bidirectional for counting purposes: each physical edge contributes
+            two directed links (u->v and v->u). If the topology already contains both directions,
+            the set logic naturally avoids double counting.
+          - The series is computed in an event-driven manner and is correct for arbitrary (t0, t1):
+            we first compute each link's state at t0 using the last known value at or before t0,
+            then process events strictly after t0.
+
+        Returns:
+          (t_arr, y_arr, total_links) where arrays are numpy arrays (float), suitable for Plotly.
+        '''
+        import heapq
+        from bisect import bisect_right
+
+        try:
+            t0f = float(t0); t1f = float(t1)
+        except Exception:
+            t0f, t1f = 0.0, 0.0
+        if t1f < t0f:
+            t0f, t1f = t1f, t0f
+
+        # Build the universe of directed links to count.
+        # Topology links are treated as bidirectional (count both directions separately).
+        edge_set = set()
+        try:
+            for e in (topo_edges or []):
+                try:
+                    s, d = e
+                    s = int(s); d = int(d)
+                except Exception:
+                    continue
+                edge_set.add((s, d))
+                edge_set.add((d, s))
+        except Exception:
+            pass
+
+        # Also include any observed links (and their reverse) from the log for robustness.
+        try:
+            for k in (per_link or {}).keys():
+                try:
+                    s, d = k
+                    s = int(s); d = int(d)
+                except Exception:
+                    continue
+                edge_set.add((s, d))
+                edge_set.add((d, s))
+        except Exception:
+            pass
+
+        total_links = len(edge_set)
+        if total_links == 0:
+            t_arr = np.asarray([t0f, t1f], dtype=float)
+            y_arr = np.asarray([0.0, 0.0], dtype=float)
+            return t_arr, y_arr, total_links
+
+        # Prepare per-link event streams (time, new_state) after t0, and compute initial state at t0.
+        events_by_link = {}
+        link_state = {}  # lk -> 0/1 for links we have seen in the log
+        active_count = 0
+
+        for k, series in (per_link or {}).items():
+            try:
+                s, d = k
+                lk = (int(s), int(d))
+            except Exception:
+                continue
+            if not series:
+                continue
+
+            # series is sorted by time in LinkVar; still be defensive.
+            try:
+                series = sorted(series, key=lambda x: float(x[0]))
+            except Exception:
+                pass
+
+            # Initial state at t0: last value at or before t0.
+            idx0 = -1
+            try:
+                idx0 = bisect_right(series, (t0f, float("inf"))) - 1
+            except Exception:
+                # Fallback: linear scan (should be rare).
+                for i, pt in enumerate(series):
+                    try:
+                        if float(pt[0]) <= t0f:
+                            idx0 = i
+                        else:
+                            break
+                    except Exception:
+                        continue
+
+            init_state = 0
+            if idx0 >= 0:
+                try:
+                    init_val = float(series[idx0][1])
+                    init_state = 1 if init_val > 0 else 0
+                except Exception:
+                    init_state = 0
+
+            if init_state == 1:
+                link_state[lk] = 1
+                active_count += 1
+
+            # Build event stream strictly after t0 (t0 is already represented by init_state).
+            ev = []
+            last_state = init_state
+            i = idx0 + 1
+            while i < len(series):
+                try:
+                    tt = float(series[i][0])
+                    if tt <= t0f:
+                        i += 1
+                        continue
+                    if tt > t1f:
+                        break
+                    vv = float(series[i][1])
+                    new_state = 1 if vv > 0 else 0
+                except Exception:
+                    i += 1
+                    continue
+
+                if new_state != last_state:
+                    ev.append((tt, new_state))
+                    last_state = new_state
+                i += 1
+
+            if ev:
+                events_by_link[lk] = ev
+
+        # Heap merge across links (streaming).
+        heap = []
+        for lk, ev in events_by_link.items():
+            heapq.heappush(heap, (ev[0][0], lk, ev[0][1], 0))
+
+        def apply_state(lk, new_state):
+            nonlocal active_count
+            old = link_state.get(lk, 0)
+            if new_state == old:
+                return
+            if old == 1:
+                active_count -= 1
+            if new_state == 1:
+                active_count += 1
+            link_state[lk] = new_state
+
+        # Seed with the correct count at t0.
+        times = [t0f]
+        counts = [float(total_links - active_count)]
+
+        # Process events within (t0, t1]
+        while heap and heap[0][0] <= t1f:
+            tt = heap[0][0]
+
+            # Apply all events at this exact timestamp
+            while heap and heap[0][0] == tt:
+                _, lk, st, idx = heapq.heappop(heap)
+                apply_state(lk, st)
+                idx += 1
+                ev = events_by_link.get(lk, [])
+                if idx < len(ev):
+                    heapq.heappush(heap, (ev[idx][0], lk, ev[idx][1], idx))
+
+            times.append(float(tt))
+            counts.append(float(total_links - active_count))
+
+        # Ensure we include the endpoint t1
+        if not times or times[-1] != t1f:
+            times.append(t1f)
+            counts.append(float(total_links - active_count))
+
+        # Safety: downsample if needed
+        if len(times) > int(max_points):
+            step = int(np.ceil(len(times) / float(max_points)))
+            idxs = list(range(0, len(times), step))
+            if idxs[-1] != len(times) - 1:
+                idxs.append(len(times) - 1)
+            times = [times[i] for i in idxs]
+            counts = [counts[i] for i in idxs]
+
+        return np.asarray(times, dtype=float), np.asarray(counts, dtype=float), total_links
+
+
 
 
     # Resolve active logs
@@ -10824,15 +12818,99 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
     #  MODE A: LINK VARIABLES (New Logic)
     # =========================================================
     if xy_mode == "link":
-        # We assume X=Time and Y=LinkVarName
-        # We calculate Total Y (Sum over all edges) at each time step t
+        # We assume X=Time and Y is either:
+        #   - a raw link variable name (plot Total = sum over all links)
+        #   - a derived metric of the form "__zero_count__::<var>" (plot count of links where var == 0)
+        zero_prefix = "__zero_count__::"
+        unused_prefix = "__unused_capacity__::"
+        metric_kind = "total"
+        base_y = y_sel
+
+        if isinstance(y_sel, str) and y_sel.startswith(zero_prefix):
+            metric_kind = "zero_count"
+            base_y = y_sel[len(zero_prefix):].strip()
+        elif isinstance(y_sel, str) and y_sel.startswith(unused_prefix):
+            metric_kind = "unused_capacity"
+            base_y = y_sel[len(unused_prefix):].strip()
+
+        # Support derived link parameters of the form "<var>/capacity".
+        derived_cap_ratio = False
+        base_y_name = base_y
+        if isinstance(base_y, str) and base_y.endswith("/capacity"):
+            derived_cap_ratio = True
+            base_y_name = base_y[:-len("/capacity")].strip()
+
+
         any_data = False
         seen_colls = set()
 
+        # Precompute the topology's edge set once (used for the zero-count derived metric).
+        #
+        # IMPORTANT: Use the *full* topology graph (from TOPOLOGY_STATE) when available, so this
+        # derived metric is not affected by UI filters / isolation / hidden nodes.
+        topo_edges = set()
+        topo_cap = {}
+        topo_endpoints = {}
+        try:
+            tid = None
+            try:
+                if active_topo_id is not None:
+                    tid = int(active_topo_id)
+            except Exception:
+                tid = None
+
+            if tid is not None and tid in TOPOLOGY_STATE and (TOPOLOGY_STATE[tid] or {}).get("G") is not None:
+                Gfull = TOPOLOGY_STATE[tid].get("G")
+                try:
+                    for (u, v, ed) in Gfull.edges(data=True):
+                        topo_edges.add((int(u), int(v)))
+                        if derived_cap_ratio or metric_kind == "unused_capacity":
+                            try:
+                                cap = float((ed or {}).get("capacity", 0.0))
+                            except Exception:
+                                cap = 0.0
+                            if cap > 0.0:
+                                k = _ud_edge_key(u, v)
+                                topo_cap[k] = cap
+                                try:
+                                    iu = int(u); iv = int(v)
+                                    lo, hi = (iu, iv) if iu <= iv else (iv, iu)
+                                    topo_endpoints[k] = (lo, hi)
+                                except Exception:
+                                    topo_endpoints[k] = (u, v)
+                except Exception:
+                    topo_edges = set()
+            else:
+                # Fallback: best-effort from elements_base (should be rare).
+                try:
+                    for el in (elements_base or ELEMS or []):
+                        d = (el or {}).get("data", {}) or {}
+                        if "source" in d and "target" in d:
+                            try:
+                                su = int(d["source"]) ; sv = int(d["target"])
+                                topo_edges.add((su, sv))
+                                if derived_cap_ratio or metric_kind == "unused_capacity":
+                                    try:
+                                        cap = float(d.get("capacity", 0.0))
+                                    except Exception:
+                                        cap = 0.0
+                                    if cap > 0.0:
+                                        k = _ud_edge_key(su, sv)
+                                        topo_cap[k] = cap
+                                        lo, hi = (su, sv) if su <= sv else (sv, su)
+                                        topo_endpoints[k] = (lo, hi)
+                            except Exception:
+                                continue
+                except Exception:
+                    topo_edges = set()
+        except Exception:
+            topo_edges = set()
+
+
         for i, log_bundle in enumerate(logs):
-            # 1. Collective/Log Metadata
-            cid = log_bundle.get('_coll_id')
-            # Check hidden params
+            cid = log_bundle.get("_coll_id")
+
+            # Hidden params are stored by *raw var name*.
             hidden_params = set()
             if cid is not None and active_topo_id:
                 tid = str(active_topo_id)
@@ -10840,110 +12918,555 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
                     if str(c_obj.get("id")) == str(cid):
                         hidden_params = set(c_obj.get("hidden_params", []))
                         break
-            
-            if y_sel in hidden_params: continue
 
-            # 2. Get Visualizer
+            if not base_y or base_y in hidden_params:
+                continue
+
+            # Visualizer
             lid = int(log_bundle.get("id"))
             V = MULTI_VIZ_OBJS.get(lid)
-            if not V: continue
+            if not V:
+                continue
 
-            # 3. Find the Link Variable object
+            # Find link var object
             target_var = None
-            for lv in getattr(V, "link_vars", []):
-                if lv.name == y_sel:
+            for lv in getattr(V, "link_vars", []) or []:
+                if lv.name == base_y_name:
                     target_var = lv
                     break
-            
-            if not target_var: continue
+            if not target_var:
+                continue
 
-            # 4. Compute Total Flow (Sum of all links)
-            # target_var.per_link = { (src,dst): [(t, val), ...], ... }
-            # Use union of per-link change points (within the segment) as the evaluation grid.
-            _cand_t = []
+            per_link = (getattr(target_var, "per_link", None) or {}) or {}
+
+            # Build an evaluation time grid from change points within the segment
+            cand_t = []
             try:
-                for (_k, series0) in (target_var.per_link or {}).items():
+                for (_k, series0) in per_link.items():
                     if not series0:
                         continue
                     for pt in series0:
                         try:
-                            _cand_t.append(float(pt[0]))
+                            cand_t.append(float(pt[0]))
                         except Exception:
                             continue
-                    if len(_cand_t) > 2 * 8000:
+                    if len(cand_t) > 2 * 8000:
                         break
             except Exception:
                 pass
-            # Cap link-mode series grid to this log's own change points to preserve resolution for shorter collectives.
+
             t1_eff = float(t1)
             try:
-                if _cand_t:
-                    t1_eff = min(float(t1), float(max(_cand_t)))
+                if cand_t:
+                    t1_eff = min(float(t1), float(max(cand_t)))
             except Exception:
                 t1_eff = float(t1)
+
             if t1_eff < float(t0):
                 t1_eff = float(t0)
-            t_local = _make_time_grid(_cand_t, t0, t1_eff, max_points=8000)
-            total_series = np.zeros_like(t_local)
-            
-            # Iterate ALL links in this variable
-            # (Note: we could optimize by filtering links visible in the graph, 
-            #  but usually "Total Flow" implies the whole network state)
-            for (_src, _dst), series in (target_var.per_link or {}).items():
-                if not series: continue
-                # series is list of (time, val). Values are step functions.
-                # We need to sample this series at times `t`.
-                
-                # Unzip
-                times = np.array([pt[0] for pt in series])
-                vals  = np.array([pt[1] for pt in series])
-                
-                # `searchsorted` gives the index where `t` would be inserted.
-                # Since these are step functions (value holds until next change),
-                # we want the value at index `idx - 1`.
-                idx = np.searchsorted(times, t_local, side='right') - 1
-                
-                # Fix indices < 0 (before first event -> value is 0)
-                valid_mask = idx >= 0
-                
-                # Accumulate
-                # Create a temp array for this link's contribution
-                link_contrib = np.zeros_like(t_local)
-                link_contrib[valid_mask] = vals[idx[valid_mask]]
-                
-                total_series += link_contrib
 
-            # 5. Plot
-            coll_name = log_bundle.get('_coll_name') or log_bundle.get('label')
-            coll_color = log_bundle.get('_coll_color') or log_bundle.get('color') or _next_color(i)
+            
+            if metric_kind == "zero_count":
+                # Event-driven computation (accurate at change boundaries).
+                t_local, y_series, _total_links = _zero_count_series_event(per_link, topo_edges, t0, t1_eff, max_points=200000)
+
+                y_title = f"Count(links where {base_y}=0) (total={_total_links})"
+                trace_suffix = f"{base_y}=0 count"
+                plot_title = f"# links where {base_y}=0 over Time"
+
+            elif metric_kind == "unused_capacity":
+                # Event-driven unused capacity: Σ over all *physical* topology links with capacity>0:
+                #   unused(t) = Σ max(capacity(link) - used_flow(link,t), 0)
+                # where used_flow(link,t) is the dominant direction: max(flow(u→v), flow(v→u)).
+                import heapq
+
+                t0f = float(t0)
+                t1f = float(t1_eff)
+
+                # Universe: all physical links with positive capacity.
+                ud_keys = [k for (k, cap) in (topo_cap or {}).items() if float(cap or 0.0) > 0.0]
+                if not ud_keys:
+                    t_local = np.asarray([t0f, t1f], dtype=float)
+                    y_series = np.asarray([0.0, 0.0], dtype=float)
+                else:
+                    # Directional series caches for each undirected link.
+                    f_times = {}
+                    f_vals = {}
+                    r_times = {}
+                    r_vals = {}
+
+                    cur_f = {k: 0.0 for k in ud_keys}
+                    cur_r = {k: 0.0 for k in ud_keys}
+
+                    # Track current unused per link to update total quickly.
+                    cur_unused = {k: 0.0 for k in ud_keys}
+                    sum_unused = 0.0
+
+                    def _get_series(u, v):
+                        s0 = per_link.get((u, v))
+                        if s0 is None:
+                            s0 = per_link.get((str(u), str(v)))
+                        return s0
+
+                    def _prep_series(series):
+                        if not series:
+                            return None, None
+                        try:
+                            times = np.asarray([float(pt[0]) for pt in series], dtype=float)
+                            vals = np.asarray([float(pt[1]) for pt in series], dtype=float)
+                        except Exception:
+                            return None, None
+                        if times.size == 0:
+                            return None, None
+                        if times.size > 1 and not np.all(times[:-1] <= times[1:]):
+                            order = np.argsort(times, kind="mergesort")
+                            times = times[order]
+                            vals = vals[order]
+                        return times, vals
+
+                    # 1) Initialize each physical link at t0 and seed the heap with first events.
+                    heap = []  # (time, ud_key, dir, idx)
+                    for k in ud_keys:
+                        cap = float(topo_cap.get(k, 0.0) or 0.0)
+                        if cap <= 0.0:
+                            continue
+
+                        u, v = topo_endpoints.get(k, None) or (None, None)
+                        if u is None or v is None:
+                            # Fallback: parse from key "lo-hi".
+                            try:
+                                a, b = str(k).split("-")
+                                u = int(a); v = int(b)
+                            except Exception:
+                                continue
+
+                        s_f = _get_series(u, v)
+                        s_r = _get_series(v, u)
+
+                        tf, vf = _prep_series(s_f)
+                        tr, vr = _prep_series(s_r)
+
+                        if tf is not None:
+                            f_times[k] = tf
+                            f_vals[k] = vf
+                            j = int(np.searchsorted(tf, t0f, side="right") - 1)
+                            cur_f[k] = float(vf[j]) if j >= 0 else 0.0
+                            jn = int(np.searchsorted(tf, t0f, side="right"))
+                            if jn < tf.size and float(tf[jn]) <= t1f:
+                                heapq.heappush(heap, (float(tf[jn]), k, 0, jn))
+
+                        if tr is not None:
+                            r_times[k] = tr
+                            r_vals[k] = vr
+                            j = int(np.searchsorted(tr, t0f, side="right") - 1)
+                            cur_r[k] = float(vr[j]) if j >= 0 else 0.0
+                            jn = int(np.searchsorted(tr, t0f, side="right"))
+                            if jn < tr.size and float(tr[jn]) <= t1f:
+                                heapq.heappush(heap, (float(tr[jn]), k, 1, jn))
+
+                        used = max(float(cur_f.get(k, 0.0)), float(cur_r.get(k, 0.0)))
+                        uu = cap - used
+                        if uu < 0.0:
+                            uu = 0.0
+                        cur_unused[k] = float(uu)
+                        sum_unused += float(uu)
+
+                    times_out = [t0f]
+                    unused_out = [float(sum_unused)]
+
+                    # 2) Process events.
+                    while heap:
+                        tcur = heap[0][0]
+                        if tcur > t1f:
+                            break
+
+                        latest = {}  # (k,dir) -> idx
+                        while heap and heap[0][0] == tcur:
+                            _t, k, dr, idx_ev = heapq.heappop(heap)
+                            prev = latest.get((k, dr))
+                            if prev is None or idx_ev > prev:
+                                latest[(k, dr)] = idx_ev
+
+                        for (k, dr), idx_ev in latest.items():
+                            cap = float(topo_cap.get(k, 0.0) or 0.0)
+                            if cap <= 0.0:
+                                continue
+
+                            if dr == 0:
+                                times = f_times.get(k); vals = f_vals.get(k)
+                            else:
+                                times = r_times.get(k); vals = r_vals.get(k)
+
+                            if times is None or vals is None or idx_ev < 0 or idx_ev >= vals.size:
+                                continue
+
+                            # Remove old unused contribution.
+                            old_uu = float(cur_unused.get(k, 0.0))
+
+                            new_raw = float(vals[idx_ev])
+                            if dr == 0:
+                                cur_f[k] = new_raw
+                            else:
+                                cur_r[k] = new_raw
+
+                            used = max(float(cur_f.get(k, 0.0)), float(cur_r.get(k, 0.0)))
+                            new_uu = cap - used
+                            if new_uu < 0.0:
+                                new_uu = 0.0
+
+                            if new_uu != old_uu:
+                                sum_unused += (new_uu - old_uu)
+                                cur_unused[k] = float(new_uu)
+
+                            nxt = idx_ev + 1
+                            if nxt < times.size and float(times[nxt]) <= t1f:
+                                heapq.heappush(heap, (float(times[nxt]), k, dr, nxt))
+
+                        times_out.append(float(tcur))
+                        unused_out.append(float(sum_unused))
+
+                    if not times_out or times_out[-1] != t1f:
+                        times_out.append(float(t1f))
+                        unused_out.append(float(sum_unused))
+
+                    t_local = np.asarray(times_out, dtype=float)
+                    y_series = np.asarray(unused_out, dtype=float)
+
+                y_title = "Unused capacity"
+                trace_suffix = "Unused capacity"
+                plot_title = "Unused capacity over Time"
+
+            else:
+                # Event-driven total series: process link updates in chronological order so
+                # each change produces a true 90° step (and avoids O(#links * #times) work).
+                import heapq
+
+                t0f = float(t0)
+                t1f = float(t1_eff)
+
+                # Special-case: for flow/capacity we want the *average* utilization-like ratio across
+                # *all* topology links, including links that have 0 flow in the current segment.
+                _nm = str(base_y_name or "").strip().lower()
+                avg_cap_ratio_mode = bool(derived_cap_ratio and (_nm == "flow" or _nm.endswith("flow") or ("throughput" in _nm)))
+
+                if avg_cap_ratio_mode:
+                    # Universe: all physical links with positive capacity.
+                    ud_keys = [k for (k, cap) in (topo_cap or {}).items() if float(cap or 0.0) > 0.0]
+                    if not ud_keys:
+                        t_local = np.asarray([t0f, t1f], dtype=float)
+                        y_series = np.asarray([0.0, 0.0], dtype=float)
+                    else:
+                        # Directional series caches for each undirected link.
+                        f_times = {}
+                        f_vals = {}
+                        r_times = {}
+                        r_vals = {}
+
+                        cur_f = {k: 0.0 for k in ud_keys}
+                        cur_r = {k: 0.0 for k in ud_keys}
+                        cur_ratio = {k: 0.0 for k in ud_keys}
+
+                        sum_ratio = 0.0
+
+                        def _get_series(u, v):
+                            s0 = per_link.get((u, v))
+                            if s0 is None:
+                                s0 = per_link.get((str(u), str(v)))
+                            return s0
+
+                        def _prep_series(series):
+                            if not series:
+                                return None, None
+                            try:
+                                times = np.asarray([float(pt[0]) for pt in series], dtype=float)
+                                vals = np.asarray([float(pt[1]) for pt in series], dtype=float)
+                            except Exception:
+                                return None, None
+                            if times.size == 0:
+                                return None, None
+                            if times.size > 1 and not np.all(times[:-1] <= times[1:]):
+                                order = np.argsort(times, kind="mergesort")
+                                times = times[order]
+                                vals = vals[order]
+                            return times, vals
+
+                        # 1) Initialize each physical link at t0 and seed the heap with first events.
+                        heap = []  # (time, ud_key, dir, idx)
+                        for k in ud_keys:
+                            cap = float(topo_cap.get(k, 0.0) or 0.0)
+                            if cap <= 0.0:
+                                continue
+
+                            u, v = topo_endpoints.get(k, None) or (None, None)
+                            if u is None or v is None:
+                                # Fallback: parse from key "lo-hi".
+                                try:
+                                    a, b = str(k).split("-")
+                                    u = int(a); v = int(b)
+                                except Exception:
+                                    continue
+
+                            s_f = _get_series(u, v)
+                            s_r = _get_series(v, u)
+
+                            tf, vf = _prep_series(s_f)
+                            tr, vr = _prep_series(s_r)
+
+                            if tf is not None:
+                                f_times[k] = tf
+                                f_vals[k] = vf
+                                j = int(np.searchsorted(tf, t0f, side="right") - 1)
+                                cur_f[k] = float(vf[j]) if j >= 0 else 0.0
+                                jn = int(np.searchsorted(tf, t0f, side="right"))
+                                if jn < tf.size and float(tf[jn]) <= t1f:
+                                    heapq.heappush(heap, (float(tf[jn]), k, 0, jn))
+
+                            if tr is not None:
+                                r_times[k] = tr
+                                r_vals[k] = vr
+                                j = int(np.searchsorted(tr, t0f, side="right") - 1)
+                                cur_r[k] = float(vr[j]) if j >= 0 else 0.0
+                                jn = int(np.searchsorted(tr, t0f, side="right"))
+                                if jn < tr.size and float(tr[jn]) <= t1f:
+                                    heapq.heappush(heap, (float(tr[jn]), k, 1, jn))
+
+                            best = max(float(cur_f.get(k, 0.0)), float(cur_r.get(k, 0.0)))
+                            rr = (best / cap) if cap > 0.0 else 0.0
+                            cur_ratio[k] = float(rr)
+                            sum_ratio += float(rr)
+
+                        denom = float(len(ud_keys)) if len(ud_keys) > 0 else 1.0
+                        times_out = [t0f]
+                        avg_out = [float(sum_ratio) / denom]
+
+                        # 2) Process events.
+                        while heap:
+                            tcur = heap[0][0]
+                            if tcur > t1f:
+                                break
+
+                            latest = {}  # (k,dir) -> idx
+                            while heap and heap[0][0] == tcur:
+                                _t, k, dr, idx_ev = heapq.heappop(heap)
+                                prev = latest.get((k, dr))
+                                if prev is None or idx_ev > prev:
+                                    latest[(k, dr)] = idx_ev
+
+                            for (k, dr), idx_ev in latest.items():
+                                cap = float(topo_cap.get(k, 0.0) or 0.0)
+                                if cap <= 0.0:
+                                    continue
+
+                                if dr == 0:
+                                    times = f_times.get(k); vals = f_vals.get(k)
+                                else:
+                                    times = r_times.get(k); vals = r_vals.get(k)
+
+                                if times is None or vals is None or idx_ev < 0 or idx_ev >= vals.size:
+                                    continue
+
+                                new_raw = float(vals[idx_ev])
+                                if dr == 0:
+                                    cur_f[k] = new_raw
+                                else:
+                                    cur_r[k] = new_raw
+
+                                old_rr = float(cur_ratio.get(k, 0.0))
+                                best = max(float(cur_f.get(k, 0.0)), float(cur_r.get(k, 0.0)))
+                                new_rr = (best / cap) if cap > 0.0 else 0.0
+                                if new_rr != old_rr:
+                                    sum_ratio += (new_rr - old_rr)
+                                    cur_ratio[k] = float(new_rr)
+
+                                nxt = idx_ev + 1
+                                if nxt < times.size and float(times[nxt]) <= t1f:
+                                    heapq.heappush(heap, (float(times[nxt]), k, dr, nxt))
+
+                            times_out.append(float(tcur))
+                            avg_out.append(float(sum_ratio) / denom)
+
+                        if not times_out or times_out[-1] != t1f:
+                            times_out.append(float(t1f))
+                            avg_out.append(float(sum_ratio) / denom)
+
+                        t_local = np.asarray(times_out, dtype=float)
+                        y_series = np.asarray(avg_out, dtype=float)
+
+                    y_title = f"Avg({base_y_name}/capacity)"
+                    trace_suffix = f"{base_y_name}/cap Avg"
+                    plot_title = f"Average {base_y_name}/capacity over Time"
+
+                else:
+                    # Default behavior: sum over the directional link-series provided by the log.
+                    link_times = {}
+                    link_vals = {}
+
+                    cur = {}
+                    total = 0.0
+
+                    # 1) Initialize per-link state at t0.
+                    for lk, series in (per_link or {}).items():
+                        if not series:
+                            continue
+                        try:
+                            times = np.asarray([float(pt[0]) for pt in series], dtype=float)
+                            vals = np.asarray([float(pt[1]) for pt in series], dtype=float)
+                        except Exception:
+                            continue
+
+                        if times.size == 0:
+                            continue
+
+                        # Ensure time-sorted.
+                        if times.size > 1 and not np.all(times[:-1] <= times[1:]):
+                            order = np.argsort(times, kind="mergesort")
+                            times = times[order]
+                            vals = vals[order]
+
+                        link_times[lk] = times
+                        link_vals[lk] = vals
+
+                        j = int(np.searchsorted(times, t0f, side="right") - 1)
+                        v0_raw = float(vals[j]) if j >= 0 else 0.0
+
+                        if derived_cap_ratio:
+                            cap = float(topo_cap.get(_ud_edge_key(lk[0], lk[1]), 0.0) or 0.0)
+                            v0 = (v0_raw / cap) if cap > 0.0 else 0.0
+                        else:
+                            v0 = v0_raw
+
+                        cur[lk] = float(v0)
+                        total += float(v0)
+
+                    # 2) Seed heap with first event > t0 for each link.
+                    heap = []
+                    for lk, times in link_times.items():
+                        j = int(np.searchsorted(times, t0f, side="right"))  # first strictly > t0
+                        if j < times.size and float(times[j]) <= t1f:
+                            heapq.heappush(heap, (float(times[j]), lk, j))
+
+                    times_out = [t0f]
+                    total_out = [float(total)]
+
+                    # 3) Process events in chronological order (group by timestamp).
+                    while heap:
+                        tcur = heap[0][0]
+                        if tcur > t1f:
+                            break
+
+                        # Keep only the *latest* update per link at this timestamp.
+                        latest_idx = {}
+                        while heap and heap[0][0] == tcur:
+                            _t, lk, idx_ev = heapq.heappop(heap)
+                            prev = latest_idx.get(lk)
+                            if (prev is None) or (idx_ev > prev):
+                                latest_idx[lk] = idx_ev
+
+                        for lk, idx_ev in latest_idx.items():
+                            times = link_times.get(lk)
+                            vals = link_vals.get(lk)
+                            if times is None or vals is None:
+                                continue
+                            if idx_ev < 0 or idx_ev >= vals.size:
+                                continue
+
+                            new_raw = float(vals[idx_ev])
+
+                            if derived_cap_ratio:
+                                cap = float(topo_cap.get(_ud_edge_key(lk[0], lk[1]), 0.0) or 0.0)
+                                new_v = (new_raw / cap) if cap > 0.0 else 0.0
+                            else:
+                                new_v = new_raw
+
+                            old_v = float(cur.get(lk, 0.0))
+                            if new_v != old_v:
+                                total += (new_v - old_v)
+                                cur[lk] = float(new_v)
+
+                            nxt = idx_ev + 1
+                            if nxt < times.size and float(times[nxt]) <= t1f:
+                                heapq.heappush(heap, (float(times[nxt]), lk, nxt))
+
+                        times_out.append(float(tcur))
+                        total_out.append(float(total))
+
+                    # Ensure endpoint is present.
+                    if not times_out or times_out[-1] != t1f:
+                        times_out.append(float(t1f))
+                        total_out.append(float(total))
+
+                    t_local = np.asarray(times_out, dtype=float)
+                    y_series = np.asarray(total_out, dtype=float)
+
+                    if derived_cap_ratio:
+                        y_title = f"Sum({base_y_name}/capacity)"
+                        trace_suffix = f"{base_y_name}/cap Total"
+                        plot_title = f"Total {base_y_name}/capacity over Time"
+                    else:
+                        y_title = f"Sum({base_y_name})"
+                        trace_suffix = f"{base_y_name} Total"
+                        plot_title = f"Total {base_y_name} over Time"
+            # Plot
+            coll_name = log_bundle.get("_coll_name") or log_bundle.get("label")
+            coll_color = log_bundle.get("_coll_color") or log_bundle.get("color") or _next_color(i)
             lg = str(cid) if cid is not None else str(coll_name)
             showlegend = lg not in seen_colls
             seen_colls.add(lg)
 
             fig.add_trace(go.Scatter(
-                x=t_local, y=total_series, 
-                mode="lines", 
-                name=f"{coll_name} (Total)", 
-                line=dict(color=coll_color), 
-                legendgroup=lg, 
+                x=t_local, y=y_series,
+                mode="lines",
+                line_shape="hv",
+                name=f"{coll_name} ({trace_suffix})",
+                line=dict(color=coll_color),
+                legendgroup=lg,
                 showlegend=showlegend
             ))
             any_data = True
 
         if not any_data:
-             fig.add_annotation(text="No link data found for selection.", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+            fig.add_annotation(
+                text="No link data found for selection.",
+                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
+            )
+
+                # Unit/tick formatting (primarily for flow-like metrics).
+        yaxis_kwargs = {}
+        try:
+            _nm = str(base_y_name or "").strip().lower()
+        except Exception:
+            _nm = ""
+        if metric_kind in ("total", "unused_capacity"):
+            if metric_kind == "unused_capacity":
+                # Unused capacity is a rate (same units as capacity/flow).
+                yaxis_kwargs.update(dict(tickformat="~s", ticksuffix="/s"))
+                if ("/s" not in str(y_title)) and ("per" not in str(y_title).lower()):
+                    y_title = f"{y_title} (/s)"
+            elif _nm == "flow" or _nm.endswith("flow") or ("throughput" in _nm):
+                if derived_cap_ratio:
+                    # flow/capacity is a utilization-like ratio => unitless.
+                    yaxis_kwargs.update(dict(tickformat=".3f"))
+                    if "unitless" not in str(y_title).lower():
+                        y_title = f"{y_title} (unitless)"
+                else:
+                    # flow is a rate => show "/s" explicitly.
+                    yaxis_kwargs.update(dict(tickformat="~s", ticksuffix="/s"))
+                    if ("/s" not in str(y_title)) and ("per" not in str(y_title).lower()):
+                        y_title = f"{y_title} (/s)"
+        if yaxis_kwargs:
+            fig.update_yaxes(**yaxis_kwargs)
 
         fig.update_layout(
-            title=f"Total {y_sel} over Time", 
-            xaxis_title="Time", 
-            yaxis_title=f"Sum({y_sel})",
-            margin=dict(l=40, r=10, t=48, b=40), 
+            title=plot_title,
+            xaxis_title="Time",
+            yaxis_title=y_title,
+            margin=dict(l=40, r=10, t=48, b=40),
             hovermode="closest"
         )
         return fig
 
 
-    # =========================================================
+# =========================================================
     #  MODE B: DATA/CHUNK VARIABLES (Legacy Logic)
     # =========================================================
 
@@ -11105,23 +13628,66 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
         if t1_eff < float(t0):
             t1_eff = float(t0)
         
-        t_local = _make_time_grid(cand_t, t0, t1_eff, max_points=8000)
+        t_local = _make_time_grid(cand_t, t0, t1_eff, max_points=200000)
 
         def series_time():
             return t_local.copy()
 
         def series_wip():
+
+            # Path-aware WIP: count active *send-paths* (deduplicates pipelined multi-hop sends).
+
             if s_col is not None and not df.empty:
+
+                chunk_col = None
+
+                for cc in ("chunk", "chunk_id", "cid", "data_id"):
+
+                    if cc in df.columns:
+
+                        chunk_col = cc
+
+                        break
+
+                if chunk_col is not None and ("src" in df.columns) and ("dst" in df.columns):
+
+                    try:
+
+                        y = _wip_paths_at_times(df, t_local, start_col=s_col, end_col=e_col,
+
+                                            chunk_col=chunk_col, src_col="src", dst_col="dst")
+
+                        return y.astype(float)
+
+                    except Exception:
+
+                        pass
+
+            
+
+                # Fallback: raw active hop-interval count.
+
                 s_arr = np.sort(df[s_col].to_numpy(dtype=float))
+
                 e_arr = np.sort(df[e_col].to_numpy(dtype=float))
+
                 return (np.searchsorted(s_arr, t_local, side="right") -
+
                         np.searchsorted(e_arr, t_local, side="right")).astype(float)
+
+            
+
             starts_arr = np.sort(np.array([float(v) for v in (start_map or {}).values()], dtype=float))
-            fins_arr = np.sort(np.array([float(v) for v in (fin_map or {}).values()], dtype=float))
+
+            fins_arr   = np.sort(np.array([float(v) for v in (fin_map   or {}).values()], dtype=float))
+
             if starts_arr.size == 0 or fins_arr.size == 0:
+
                 return np.full_like(t_local, np.nan, dtype=float)
+
             return (np.searchsorted(starts_arr, t_local, side="right") -
-                    np.searchsorted(fins_arr, t_local, side="right")).astype(float)
+
+                    np.searchsorted(fins_arr,   t_local, side="right")).astype(float)
 
         def series_cum_finished():
             fins_arr = np.sort(np.array([float(v) for v in (fin_map or {}).values()], dtype=float))
@@ -11132,21 +13698,22 @@ def build_xy_plot(x_sel, y_sel, seg, active_coll_map,
             return np.searchsorted(fins_arr, t_local, side="right").astype(float)
 
         def series_avg_send_duration():
-            if s_col is None or df.empty:
-                return np.full_like(t_local, np.nan, dtype=float)
-            # Build bin edges that work for non-uniform t_local: midpoints between consecutive samples.
-            if len(t_local) > 1:
-                mids = 0.5 * (t_local[1:] + t_local[:-1])
-                edges = np.concatenate([[t_local[0] - 1e-9], mids, [t_local[-1] + 1e-9]])
-            else:
-                edges = np.asarray([t_local[0] - 1e-9, t_local[0] + 1e-9], dtype=float)
 
-            idx = np.clip(np.digitize(df[e_col].to_numpy(dtype=float), edges) - 1, 0, len(t_local) - 1)
-            num = np.bincount(idx, weights=df["duration"].to_numpy(dtype=float), minlength=len(t_local)).astype(float)
-            den = np.bincount(idx, minlength=len(t_local)).astype(float)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                y = np.where(den > 0, num / den, np.nan)
-            return y
+            # Cumulative average duration of sends that have completed by time t.
+
+            if s_col is None or df.empty:
+
+                return np.full_like(t_local, np.nan, dtype=float)
+
+            try:
+
+                y = _avg_send_duration_cum_at_times(df, t_local, start_col=s_col, end_col=e_col)
+
+                return y.astype(float)
+
+            except Exception:
+
+                return np.full_like(t_local, np.nan, dtype=float)
 
         def series_postleft_avg():
             # Average "chunks left to receive" across allowed nodes, for the selected data var.
@@ -11361,19 +13928,59 @@ def export_current_xy(n_csv, x_sel, y_sel, seg,
         return t.copy()
 
     def series_wip():
-        # Series wip.
+
+        # Path-aware WIP: count active *send-paths* (deduplicates pipelined multi-hop sends).
+
         if s_col is not None and not df.empty:
-            # Validate inputs / state before continuing.
+
+            chunk_col = None
+
+            for cc in ("chunk", "chunk_id", "cid", "data_id"):
+
+                if cc in df.columns:
+
+                    chunk_col = cc
+
+                    break
+
+            if chunk_col is not None and ("src" in df.columns) and ("dst" in df.columns):
+
+                try:
+
+                    y = _wip_paths_at_times(df, t, start_col=s_col, end_col=e_col,
+
+                                        chunk_col=chunk_col, src_col="src", dst_col="dst")
+
+                    return y.astype(float)
+
+                except Exception:
+
+                    pass
+
+        
+
+            # Fallback: raw active hop-interval count.
+
             s_arr = np.sort(df[s_col].to_numpy(dtype=float))
+
             e_arr = np.sort(df[e_col].to_numpy(dtype=float))
+
             return (np.searchsorted(s_arr, t, side="right") -
+
                     np.searchsorted(e_arr, t, side="right")).astype(float)
+
+        
+
         starts_arr = np.sort(np.array([float(v) for v in (start_map or {}).values()], dtype=float))
+
         fins_arr   = np.sort(np.array([float(v) for v in (fin_map   or {}).values()], dtype=float))
+
         if starts_arr.size == 0 or fins_arr.size == 0:
-            # Branch based on the current state / selection.
+
             return np.full_like(t, np.nan, dtype=float)
+
         return (np.searchsorted(starts_arr, t, side="right") -
+
                 np.searchsorted(fins_arr,   t, side="right")).astype(float)
 
     def series_cum_finished():
@@ -11388,19 +13995,22 @@ def export_current_xy(n_csv, x_sel, y_sel, seg,
         return np.searchsorted(fins_arr, t, side="right").astype(float)
 
     def series_avg_send_duration():
-        # Series avg send duration.
+
+        # Cumulative average duration of sends that have completed by time t.
+
         if s_col is None or df.empty:
-            # Validate inputs / state before continuing.
+
             return np.full_like(t, np.nan, dtype=float)
-        dt = (t[1] - t[0]) if len(t) > 1 else 1.0
-        edges = np.concatenate([t - 0.5 * dt, [t[-1] + 0.5 * dt]])
-        idx   = np.clip(np.digitize(df[e_col].to_numpy(dtype=float), edges) - 1, 0, len(t) - 1)
-        num   = np.bincount(idx, weights=df["duration"].to_numpy(dtype=float), minlength=len(t)).astype(float)
-        den   = np.bincount(idx, minlength=len(t)).astype(float)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            # Use a context manager to manage resources safely.
-            y = np.where(den > 0, num / den, np.nan)
-        return y
+
+        try:
+
+            y = _avg_send_duration_cum_at_times(df, t, start_col=s_col, end_col=e_col)
+
+            return y.astype(float)
+
+        except Exception:
+
+            return np.full_like(t, np.nan, dtype=float)
 
     def series_postleft_avg():
         # Series postleft avg.
@@ -11793,21 +14403,92 @@ def load_log_complete(_n, path, target_cid, active_tid, topo_collectives, active
 
 @app.callback(
     Output("multi-logs", "data", allow_duplicate=True),
+    Output("multi-logs-include", "data", allow_duplicate=True),
     Input("topology-radio", "value"),
-    State("topo-logs", "data"),
+    Input("topo-logs", "data"),
+    Input("active-collectives-map", "data"),
+    State("multi-logs-include", "data"),
     prevent_initial_call=True
 )
-def sync_collectives_to_multi(active_tid, topo_collectives):
-    # Flattens the active topology's collectives into a list for the XY plotter
-    # Sync collectives to multi.
-    if not active_tid: return []
+def sync_collectives_to_multi(active_tid, topo_collectives, active_coll_map, current_include):
+    """
+    Keep multi-logs and multi-logs-include consistent with the *active topology* and
+    the currently checked collectives.
+
+    Key properties:
+    - If a session is loaded, we preserve the saved selection when possible (intersection).
+    - If no selection exists (or becomes invalid), we default to selecting all available logs.
+    - If active_collectives_map has no entry for this topology yet, we treat ALL collectives as active
+      (initial load compatibility).
+    """
+    if not active_tid:
+        return [], []
+
     tid = str(active_tid)
-    collectives = (topo_collectives or {}).get(tid, [])
-    all_logs = []
-    for c in collectives:
-        # Iterate over the relevant items and accumulate results.
-        all_logs.extend(c.get("logs", []))
-    return all_logs
+    topo_collectives = topo_collectives or {}
+    collectives = (topo_collectives.get(tid) or [])
+
+    raw = (active_coll_map or {}).get(tid, None)
+    use_all = (raw is None)  # missing key => initial state => treat all as active
+    active_cids = set()
+    if not use_all:
+        for x in (raw or []):
+            try:
+                active_cids.add(int(x))
+            except Exception:
+                continue
+
+    # Gather logs from active collectives
+    gathered = []
+    for coll in (collectives or []):
+        if not isinstance(coll, dict):
+            continue
+        try:
+            cid = int(coll.get("id"))
+        except Exception:
+            continue
+        if (use_all) or (cid in active_cids):
+            for lb in (coll.get("logs") or []):
+                if isinstance(lb, dict):
+                    gathered.append(lb)
+
+    # Dedupe by log id (keep first)
+    seen = set()
+    logs = []
+    for lb in gathered:
+        try:
+            lid = int(lb.get("id"))
+        except Exception:
+            continue
+        if lid in seen:
+            continue
+        seen.add(lid)
+        logs.append(lb)
+
+    valid_ids = sorted(seen)
+
+    # Reconcile selection (keep saved choice if possible)
+    selected = []
+    if isinstance(current_include, (list, tuple)):
+        for x in current_include:
+            try:
+                lid = int(x)
+            except Exception:
+                continue
+            if lid in seen:
+                selected.append(lid)
+        selected = sorted(set(selected))
+
+        # If user explicitly stored [] (rare), keep it
+        if len(current_include) == 0:
+            return logs, []
+    else:
+        selected = []
+
+    if (not selected) and valid_ids:
+        selected = valid_ids
+
+    return logs, selected
 
 
 
